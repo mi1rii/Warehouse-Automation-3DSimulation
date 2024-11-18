@@ -118,26 +118,6 @@ def dibujarPlano():
         glVertex3f(x, 0.0, dimBoard)
     glEnd()
 
-def Init(simulation):
-    """Inicializa la ventana de Pygame y configura OpenGL."""
-    screen = pygame.display.set_mode(
-        (screen_width, screen_height), DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("Simulación de Robots y Cajas 3D")
-
-    glMatrixMode(GL_PROJECTION)
-    glLoadIdentity()
-    gluPerspective(FOVY, screen_width / screen_height, ZNEAR, ZFAR)
-
-    glMatrixMode(GL_MODELVIEW)
-    glLoadIdentity()
-    gluLookAt(EYE_X, EYE_Y, EYE_Z, CENTER_X, CENTER_Y, CENTER_Z, UP_X, UP_Y, UP_Z)
-    glClearColor(0, 0, 0, 0)
-    glEnable(GL_DEPTH_TEST)
-
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-
-    simulation.initialize_simulation()  # Iniciar simulación
-
 def dibujar_robot(robot_state):
     """Dibuja un robot como un prisma cuadrangular."""
     opmat = OpMat()
@@ -289,9 +269,79 @@ def dibujar_autobus():
     opmat.pop()
 
 
+# Variables globales para el desplazamiento del mapa
+camera_offset_x = 0.0
+camera_offset_y = 0.0
+mouse_dragging = False
+last_mouse_x = 0
+last_mouse_y = 0
+
+def Init(simulation):
+    """Inicializa la ventana de Pygame y configura OpenGL."""
+    screen = pygame.display.set_mode(
+        (screen_width, screen_height), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("Simulación de Robots y Cajas 3D")
+
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(FOVY, screen_width / screen_height, ZNEAR, ZFAR)
+
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    gluLookAt(EYE_X, EYE_Y, EYE_Z, CENTER_X, CENTER_Y, CENTER_Z, UP_X, UP_Y, UP_Z)
+    glClearColor(0, 0, 0, 0)
+    glEnable(GL_DEPTH_TEST)
+
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+
+    simulation.initialize_simulation()  # Iniciar simulación
+
+
+def handle_mouse_motion(event):
+    """Maneja el movimiento del mouse para mover el mapa."""
+    global camera_offset_x, camera_offset_y, last_mouse_x, last_mouse_y, mouse_dragging
+
+    if mouse_dragging:
+        dx = event.pos[0] - last_mouse_x
+        dy = event.pos[1] - last_mouse_y
+        camera_offset_x += dx * 0.1  # Ajusta la sensibilidad
+        camera_offset_y -= dy * 0.1  # Ajusta la sensibilidad
+        last_mouse_x, last_mouse_y = event.pos
+
+
+def handle_mouse_button(event):
+    """Maneja los clics del mouse para iniciar o detener el arrastre."""
+    global mouse_dragging, last_mouse_x, last_mouse_y
+
+    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Botón izquierdo
+        mouse_dragging = True
+        last_mouse_x, last_mouse_y = event.pos
+    elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:  # Botón izquierdo
+        mouse_dragging = False
+
+
+def update_camera():
+    """Actualiza la posición de la cámara según los desplazamientos."""
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    gluLookAt(
+        EYE_X + camera_offset_x,  # Aplicar desplazamiento en X
+        EYE_Y,
+        EYE_Z + camera_offset_y,  # Aplicar desplazamiento en Y
+        CENTER_X + camera_offset_x,
+        CENTER_Y,
+        CENTER_Z + camera_offset_y,
+        UP_X,
+        UP_Y,
+        UP_Z
+    )
+
+
 def display(simulation):
     """Renderiza la escena de la simulación."""
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)  # Limpiar buffers
+
+    update_camera()  # Actualizar la cámara según el desplazamiento
     Axis()
     dibujarPlano()
     simulation.update()  # Actualizar estado de la simulación
@@ -299,13 +349,14 @@ def display(simulation):
     # Dibujar todos los robots
     for robot_state in simulation.robots_state:
         dibujar_robot(robot_state)
-        
+
     # Dibujar todas las cajas
     for package_state in simulation.packages_state:
         dibujar_caja(package_state)
 
     # Dibujar el autobús
     dibujar_autobus()
+
 
 def main():
     """Función principal que ejecuta la simulación."""
@@ -321,6 +372,10 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True  # Salir del bucle principal
+                elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                    handle_mouse_button(event)
+                elif event.type == pygame.MOUSEMOTION:
+                    handle_mouse_motion(event)
 
             display(simulation)  # Renderizar la simulación
             pygame.display.flip()  # Actualizar la pantalla
@@ -329,6 +384,7 @@ def main():
     finally:
         simulation.cleanup()  # Limpiar simulación al finalizar
         pygame.quit()  # Cerrar Pygame
+
 
 if __name__ == '__main__':
     main()
