@@ -37,7 +37,7 @@ end
 # Ruta para inicializar la simulación
 route("/simulation", method = POST) do
     num_robots = try parse(Int, jsonpayload()["num_robots"]) catch e 5 end
-    num_packages = try parse(Int, jsonpayload()["num_packages"]) catch e 100 end
+    num_packages = try parse(Int, jsonpayload()["num_packages"]) catch e 20 end
 
     # Crear ID de simulación
     id = string(uuid1())
