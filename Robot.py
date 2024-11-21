@@ -17,15 +17,7 @@ class Robot:
         self.textures = textures
         self.Position = [0, 2, 0]  # Posición inicial centrada en el plano
 
-        dirX = random.randint(-10, 10)
-        dirZ = random.randint(-10, 10)
-        # Evitar división por cero
-        if dirX == 0 and dirZ == 0:
-            dirX, dirZ = 1, 1
-        magnitude = math.sqrt(dirX**2 + dirZ**2)
-        self.Direction = [(dirX / magnitude), 0, (dirZ / magnitude)]
         self.angle = 0  # Mantendremos este valor fijo
-
         self.platformHeight = 0  # Inicializar platformHeight
 
     def draw(self):

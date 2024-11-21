@@ -41,7 +41,9 @@ end
 
 # Function to update a robot's state
 function update(robot::Robot)
-    mover_robot!(robot, 1.0, robot.angulo + 0.1)  # Example update logic
+    # Mueve el robot en una dirección aleatoria
+    robot.angulo += rand() * (π/2) - (π/4)  # Cambia el ángulo aleatoriamente entre -π/4 y π/4
+    mover_robot!(robot, 1.0, robot.angulo)
 end
 
 end  # End of module ModuloRobot

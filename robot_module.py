@@ -8,7 +8,6 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
-import random
 import math
 
 class Robot:
@@ -17,17 +16,6 @@ class Robot:
         self.vel = vel
         self.textures = textures
         self.Position = [0, 6, 0]
-
-        dirX = random.randint(-10, 10)
-        dirZ = random.randint(-10, 10)
-        # Evitar división por cero
-        if dirX == 0 and dirZ == 0:
-            dirX, dirZ = 1, 1
-        magnitude = math.sqrt(dirX**2 + dirZ**2)
-        self.Direction = [(dirX / magnitude), 0, (dirZ / magnitude)]
-        self.angle = 0  # Mantendremos este valor fijo
-
-        self.platformHeight = 0  # Inicializar platformHeight
 
     def draw(self):
         glPushMatrix()

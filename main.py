@@ -6,7 +6,6 @@ from OpenGL.GLU import *
 import math
 import requests
 import numpy as np
-import random
 import json
 
 from Cubo import Cubo
@@ -233,7 +232,7 @@ def main():
     done = False  # Initialize the done variable
 
     # Variables para el movimiento del ratón
-    pygame.event.set_grab(True)  # Capturar el rat��n
+    pygame.event.set_grab(True)  # Capturar el ratón
     pygame.mouse.set_visible(False)  # Ocultar el cursor del ratón
 
     while not done:
