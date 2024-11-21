@@ -42,10 +42,21 @@ class Caja:
             [1, 2, 6, 5],  # Cara derecha
         ]
 
+        # Normales para cada cara
+        normals = [
+            [0, 0, -1],  # Trasera
+            [0, 0, 1],   # Frontal
+            [0, -1, 0],  # Inferior
+            [0, 1, 0],   # Superior
+            [-1, 0, 0],  # Izquierda
+            [1, 0, 0],   # Derecha
+        ]
+
         # Dibujar las caras de la caja
         glColor3f(*self.color)
         glBegin(GL_QUADS)
-        for face in faces:
+        for i, face in enumerate(faces):
+            glNormal3f(*normals[i])  # Normal para cada cara
             for vertex in face:
                 glVertex3f(*vertices[vertex])
         glEnd()

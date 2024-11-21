@@ -1,11 +1,16 @@
+# main.py
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
-import numpy as np
-from Caja import Caja
 import random
+import numpy as np
+
+from Caja import Caja
+
+# Import obj loader
+from objloader import *
 
 # Parámetros de pantalla y simulación
 SCREEN_WIDTH = 900
@@ -26,6 +31,9 @@ UP_Z = 0.0
 
 # Variables para dibujar los ejes del sistema
 AXIS_LENGTH = 50
+
+objetos = []
+objetos2 = []
 
 # Clase para manejar la cámara
 class Camera:
@@ -56,7 +64,226 @@ class Camera:
             CENTER_X, CENTER_Y, CENTER_Z,
             UP_X, UP_Y, UP_Z
         )
+        
+def displayobj():
+    glPushMatrix()  
+    #correcciones para dibujar el objeto en plano XZ
+    #esto depende de cada objeto
+    glRotatef(-90.0, 1.0, 0.0, 0.0)
+    glTranslatef(0.0, 0.0, 0.0)
+    glScale(2.0,2.0,2.0)
+    objetos[0].render()  
+    glPopMatrix()
+    
+def displayobj2():
+    glPushMatrix()  
+    #correcciones para dibujar el objeto en plano XZ
+    #esto depende de cada objeto
+    glRotatef(-90.0, 270.0, 0.0, 0.0)
+    glTranslatef(20.0, 42.5, 0)
+    glScale(0.9,0.6, 0.5)
+    objetos2[0].render()  
+    glPopMatrix()
+    
+def generate_box_positions(num_cajas):
+    colors = [
+        (198/255, 154/255, 101/255),  # Rojo
+        (198/255, 154/255, 101/255),  # Verde
+        (198/255, 154/255, 101/255),  # Azul
+        (198/255, 154/255, 101/255),  # Amarillo
+        (198/255, 154/255, 101/255),  # Magenta
+    ]
 
+    dimensions_list = [
+        (1, 1, 1), 
+        (0.6, 0.4, 0.6), 
+        (2, 2, 2),  
+        (3, 3, 3),
+        (3, 1, 3,)
+    ]
+
+    box_positions = []
+    min_distance = 4  # Distancia mínima entre cajas
+
+    for _ in range(num_cajas):
+        while True:
+            # Seleccionar un tipo de dimensiones aleatorio
+            dimensions = random.choice(dimensions_list)
+            x = random.uniform(-50.0, -1.0)  # X en el tercer cuadrante
+            z = random.uniform(50.0, -1.0)  # Z en el tercer cuadrante
+            y = dimensions[1] / 2.0 # Fijo para que la caja esté encima del piso
+
+            color = random.choice(colors)
+            # Verificar colisiones en el plano X-Z
+            collision = False
+            for pos in box_positions:
+                distance = math.sqrt((x - pos[0]) ** 2 + (z - pos[2]) ** 2)  # Comparar X e Z
+                if distance < min_distance:
+                    collision = True
+                    break
+
+            if not collision:
+                box_positions.append((x, y, z, dimensions, color))
+                break
+
+    return box_positions
+
+# Función para dibujar un cielo en forma de cubo
+
+def draw_skybox():
+    glPushMatrix()
+    glEnable(GL_DEPTH_TEST)  
+    glColor3f(0.53, 0.81, 0.98)  # Color azul cielo
+    
+    size = 50.0  # Tamaño del cubo del cielo, basado en el tamaño del piso
+
+    # Dibujar las caras internas del cubo
+    glBegin(GL_QUADS)
+
+    # Cara frontal
+    glVertex3f(-size, size, -size)
+    glVertex3f(size, size, -size)
+    glVertex3f(size, -size, -size)
+    glVertex3f(-size, -size, -size)
+
+    # Cara trasera
+    glVertex3f(-size, size, size)
+    glVertex3f(size, size, size)
+    glVertex3f(size, -size, size)
+    glVertex3f(-size, -size, size)
+
+    # Cara izquierda
+    glVertex3f(-size, size, size)
+    glVertex3f(-size, size, -size)
+    glVertex3f(-size, -size, -size)
+    glVertex3f(-size, -size, size)
+
+    # Cara derecha
+    glVertex3f(size, size, size)
+    glVertex3f(size, size, -size)
+    glVertex3f(size, -size, -size)
+    glVertex3f(size, -size, size)
+
+    # Cara superior
+    glVertex3f(-size, size, -size)
+    glVertex3f(size, size, -size)
+    glVertex3f(size, size, size)
+    glVertex3f(-size, size, size)
+
+    # Cara inferior (opcional para el cielo, usualmente no visible)
+    glVertex3f(-size, -size, -size)
+    glVertex3f(size, -size, -size)
+    glVertex3f(size, -size, size)
+    glVertex3f(-size, -size, size)
+
+    glEnd()
+
+    glEnable(GL_DEPTH_TEST)  # Restaurar el test de profundidad
+    glPopMatrix()
+    
+def draw_cajuela():
+    glPushMatrix()
+    glTranslatef(20.0, 6.0, -23.0)
+    glScale(1.0, 0.99, 2.0)
+
+    # Habilitar el test de profundidad
+    glEnable(GL_DEPTH_TEST)
+
+    size = 6.0  # Tamaño del cubo
+
+    # Dibujar las caras del cubo
+
+    # Cara frontal (gris)
+    glColor3f(0.5, 0.5, 0.5)
+    glBegin(GL_QUADS)
+    glVertex3f(-size, size, -size)
+    glVertex3f(size, size, -size)
+    glVertex3f(size, -size, -size)
+    glVertex3f(-size, -size, -size)
+    glEnd()
+
+    # Cara izquierda (gris)
+    glBegin(GL_QUADS)
+    glVertex3f(-size, size, size)
+    glVertex3f(-size, size, -size)
+    glVertex3f(-size, -size, -size)
+    glVertex3f(-size, -size, size)
+    glEnd()
+
+    # Cara derecha (gris)
+    glBegin(GL_QUADS)
+    glVertex3f(size, size, size)
+    glVertex3f(size, size, -size)
+    glVertex3f(size, -size, -size)
+    glVertex3f(size, -size, size)
+    glEnd()
+    
+    # Cara superior (gris)
+    glBegin(GL_QUADS)
+    glVertex3f(-size, size, -size)
+    glVertex3f(size, size, -size)
+    glVertex3f(size, size, size)
+    glVertex3f(-size, size, size)
+    glEnd()
+
+    # Cara inferior (rojo oscuro)
+    glColor3f(109/255, 17/255, 10/255)
+    glBegin(GL_QUADS)
+    glVertex3f(-size, -size, -size)
+    glVertex3f(size, -size, -size)
+    glVertex3f(size, -size, size)
+    glVertex3f(-size, -size, size)
+    glEnd()
+
+    # Dibujar las aristas del cubo en color negro
+    glColor3f(0.0, 0.0, 0.0) 
+    glLineWidth(1.0) 
+    glBegin(GL_LINES)
+    
+    # Cara frontal (aristas)
+    glVertex3f(-size, size, -size)
+    glVertex3f(size, size, -size)
+
+    glVertex3f(size, size, -size)
+    glVertex3f(size, -size, -size)
+
+    glVertex3f(size, -size, -size)
+    glVertex3f(-size, -size, -size)
+
+    glVertex3f(-size, -size, -size)
+    glVertex3f(-size, size, -size)
+
+    # Cara trasera (aristas)
+    glVertex3f(-size, size, size)
+    glVertex3f(size, size, size)
+
+    glVertex3f(size, size, size)
+    glVertex3f(size, -size, size)
+
+    glVertex3f(size, -size, size)
+    glVertex3f(-size, -size, size)
+
+    glVertex3f(-size, -size, size)
+    glVertex3f(-size, size, size)
+
+    # Conectar cara frontal y trasera (aristas)
+    glVertex3f(-size, size, -size)
+    glVertex3f(-size, size, size)
+
+    glVertex3f(size, size, -size)
+    glVertex3f(size, size, size)
+
+    glVertex3f(size, -size, -size)
+    glVertex3f(size, -size, size)
+
+    glVertex3f(-size, -size, -size)
+    glVertex3f(-size, -size, size)
+
+    glEnd()
+
+    glPopMatrix()
+
+    
 # Función para cargar texturas
 def load_texture(texture_path):
     try:
@@ -100,12 +327,13 @@ def draw_axes():
     glVertex3f(0.0, 0.0, AXIS_LENGTH)
     glEnd()
     glLineWidth(1.0)
+    
 
 # Función para dibujar el piso con textura repetida
 def draw_floor(texture_id):
     glEnable(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, texture_id)
-    glColor3f(1.0, 1.0, 1.0)  # Color blanco para mantener la textura original
+    glColor3f(1.0, 1.0, 1.0)  # Color blanco para mantener la textura original\
 
     glBegin(GL_QUADS)
     # Definir el tamaño del piso
@@ -131,6 +359,7 @@ def draw_floor(texture_id):
 
     glBindTexture(GL_TEXTURE_2D, 0)
     glDisable(GL_TEXTURE_2D)
+    
 
 # Función para manejar eventos de teclado
 def handle_keys(camera, keys):
@@ -143,50 +372,6 @@ def handle_keys(camera, keys):
         camera.angle_h -= 1.0
     if keys[pygame.K_d]:
         camera.angle_h += 1.0
-
-def generate_box_positions(num_cajas):
-    colors = [
-        (1.0, 0.0, 0.0),  # Rojo
-        (0.0, 1.0, 0.0),  # Verde
-        (0.0, 0.0, 1.0),  # Azul
-        (1.0, 1.0, 0.0),  # Amarillo
-        (1.0, 0.0, 1.0),  # Magenta
-    ]
-
-    dimensions_list = [
-        (1, 1, 1),  # Tipo 1
-        (0.6, 0.4, 0.6),  # Tipo 2
-        (2, 1, 2),  # Tipo 3
-        (3, 3, 3),  # Tipo 4
-        (3, 4, 3),  # Tipo 5
-    ]
-
-    box_positions = []
-    min_distance = 4  # Distancia mínima entre cajas
-
-    for _ in range(num_cajas):
-        while True:
-            x = random.uniform(-50.0, -1.0)  # X en el tercer cuadrante
-            z = random.uniform(-50.0, -1.0)  # Z en el tercer cuadrante
-            y = dimensions_list[0][1] / 2.0 + 0.1  # Fijo para que la caja esté encima del piso
-
-            # Seleccionar un tipo de dimensiones aleatorio
-            dimensions = random.choice(dimensions_list)
-            color = random.choice(colors)
-
-            # Verificar colisiones en el plano X-Z
-            collision = False
-            for pos in box_positions:
-                distance = math.sqrt((x - pos[0]) ** 2 + (z - pos[2]) ** 2)  # Comparar X e Z
-                if distance < min_distance:
-                    collision = True
-                    break
-
-            if not collision:
-                box_positions.append((x, y, z, dimensions, color))
-                break
-
-    return box_positions
 
 def main():
     pygame.init()
@@ -201,23 +386,25 @@ def main():
     # Configuración de la vista
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
-
-    # Habilitar el test de profundidad
-    glEnable(GL_DEPTH_TEST)
-    glDisable(GL_CULL_FACE)
-
-    # Habilitar suavizado de caras
-    glCullFace(GL_BACK)
+    
+    glEnable(GL_DEPTH_TEST)  # Habilitar prueba de profundidad
+    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)  # Habilitar doble cara
+    glDisable(GL_CULL_FACE)  # Asegurarse de que se rendericen ambas caras
 
     # Habilitar texturas
     glEnable(GL_TEXTURE_2D)
 
     # Cargar la textura del piso
-    floor_texture = load_texture("Floor.jpg")
+    floor_texture = load_texture("floor.jpg")
 
     # Crear instancia de la cámara
     camera = Camera()
-
+    objetos.append(OBJ("forklift.obj", swapyz=True))
+    objetos[0].generate()
+    
+    objetos2.append(OBJ("truck.obj", swapyz=True))
+    objetos2[0].generate()
+    
     num_cajas = 50
     box_positions = generate_box_positions(num_cajas)
 
@@ -226,6 +413,7 @@ def main():
         Caja(dimensions, color, (x, y, z))
         for x, y, z, dimensions, color in box_positions
     ]
+
 
     clock = pygame.time.Clock()
     done = False
@@ -265,13 +453,22 @@ def main():
 
         # Dibujar los ejes
         draw_axes()
+        
+        # Dibujar el cielo (antes de cualquier otra geometría)
+
 
         # Dibujar el piso con textura
         draw_floor(floor_texture)
-
+        draw_skybox()
+        displayobj()
+        displayobj2()
+        draw_cajuela()
+    
+        
         # Dibujar las cajas
         for caja in cajas:
             caja.draw()
+
 
         # Actualizar la pantalla
         pygame.display.flip()
