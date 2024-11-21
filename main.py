@@ -1,10 +1,11 @@
-# main.py
 import pygame
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
 import numpy as np
+from Caja import Caja
+import random
 
 # Parámetros de pantalla y simulación
 SCREEN_WIDTH = 900
@@ -143,6 +144,50 @@ def handle_keys(camera, keys):
     if keys[pygame.K_d]:
         camera.angle_h += 1.0
 
+def generate_box_positions(num_cajas):
+    colors = [
+        (1.0, 0.0, 0.0),  # Rojo
+        (0.0, 1.0, 0.0),  # Verde
+        (0.0, 0.0, 1.0),  # Azul
+        (1.0, 1.0, 0.0),  # Amarillo
+        (1.0, 0.0, 1.0),  # Magenta
+    ]
+
+    dimensions_list = [
+        (1, 1, 1),  # Tipo 1
+        (0.6, 0.4, 0.6),  # Tipo 2
+        (2, 1, 2),  # Tipo 3
+        (3, 3, 3),  # Tipo 4
+        (3, 4, 3),  # Tipo 5
+    ]
+
+    box_positions = []
+    min_distance = 4  # Distancia mínima entre cajas
+
+    for _ in range(num_cajas):
+        while True:
+            x = random.uniform(-50.0, -1.0)  # X en el tercer cuadrante
+            z = random.uniform(-50.0, -1.0)  # Z en el tercer cuadrante
+            y = dimensions_list[0][1] / 2.0 + 0.1  # Fijo para que la caja esté encima del piso
+
+            # Seleccionar un tipo de dimensiones aleatorio
+            dimensions = random.choice(dimensions_list)
+            color = random.choice(colors)
+
+            # Verificar colisiones en el plano X-Z
+            collision = False
+            for pos in box_positions:
+                distance = math.sqrt((x - pos[0]) ** 2 + (z - pos[2]) ** 2)  # Comparar X e Z
+                if distance < min_distance:
+                    collision = True
+                    break
+
+            if not collision:
+                box_positions.append((x, y, z, dimensions, color))
+                break
+
+    return box_positions
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DOUBLEBUF | OPENGL)
@@ -159,9 +204,9 @@ def main():
 
     # Habilitar el test de profundidad
     glEnable(GL_DEPTH_TEST)
+    glDisable(GL_CULL_FACE)
 
     # Habilitar suavizado de caras
-    glEnable(GL_CULL_FACE)
     glCullFace(GL_BACK)
 
     # Habilitar texturas
@@ -172,6 +217,15 @@ def main():
 
     # Crear instancia de la cámara
     camera = Camera()
+
+    num_cajas = 50
+    box_positions = generate_box_positions(num_cajas)
+
+    # Crear las cajas con las posiciones, dimensiones y colores generados
+    cajas = [
+        Caja(dimensions, color, (x, y, z))
+        for x, y, z, dimensions, color in box_positions
+    ]
 
     clock = pygame.time.Clock()
     done = False
@@ -214,6 +268,10 @@ def main():
 
         # Dibujar el piso con textura
         draw_floor(floor_texture)
+
+        # Dibujar las cajas
+        for caja in cajas:
+            caja.draw()
 
         # Actualizar la pantalla
         pygame.display.flip()
