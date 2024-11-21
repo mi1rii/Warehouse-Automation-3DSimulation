@@ -3,7 +3,6 @@ from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
 import math
-import math
 import requests
 import numpy as np
 import json
@@ -64,50 +63,6 @@ class Camera:
             CENTER_X, CENTER_Y, CENTER_Z,
             UP_X, UP_Y, UP_Z
         )
-
-def generate_box_positions(num_cajas):
-    colors = [
-        (1.0, 0.0, 0.0),  # Rojo
-        (0.0, 1.0, 0.0),  # Verde
-        (0.0, 0.0, 1.0),  # Azul
-        (1.0, 1.0, 0.0),  # Amarillo
-        (1.0, 0.0, 1.0),  # Magenta
-    ]
-
-    dimensions_list = [
-        (1, 1, 1),  # Tipo 1
-        (0.6, 0.4, 0.6),  # Tipo 2
-        (2, 1, 2),  # Tipo 3
-        (3, 3, 3),  # Tipo 4
-        (3, 4, 3),  # Tipo 5
-    ]
-
-    box_positions = []
-    min_distance = 4  # Distancia mínima entre cajas
-
-    for _ in range(num_cajas):
-        while True:
-            x = random.uniform(-50.0, -1.0)  # X en el tercer cuadrante
-            z = random.uniform(-50.0, -1.0)  # Z en el tercer cuadrante
-            y = dimensions_list[0][1] / 2.0 + 0.1  # Fijo para que la caja esté encima del piso
-
-            # Seleccionar un tipo de dimensiones aleatorio
-            dimensions = random.choice(dimensions_list)
-            color = random.choice(colors)
-
-            # Verificar colisiones en el plano X-Z
-            collision = False
-            for pos in box_positions:
-                distance = math.sqrt((x - pos[0]) ** 2 + (z - pos[2]) ** 2)  # Comparar X e Z
-                if distance < min_distance:
-                    collision = True
-                    break
-
-            if not collision:
-                box_positions.append((x, y, z, dimensions, color))
-                break
-
-    return box_positions
 
 # Función para cargar texturas
 def load_texture(texture_path):
@@ -274,8 +229,14 @@ def main():
     # Crear instancia de Robot con datos iniciales
     robot = Robot(dim=1, vel=1, textures=[])  # No need to pass textures anymore
 
-    # Crear una caja en el tercer cuadrante
-    caja = Caja((1, 1, 1), (1.0, 0.0, 0.0), (-10.0, 0.5, -10.0))  # Dimensiones, color y posición
+    # Crear 5 cajas en el tercer cuadrante con diferentes dimensiones
+    cajas = [
+        Caja((1, 1, 1), (1.0, 0.0, 0.0), (-10.0, 0.5, -10.0)),  # Caja 1
+        Caja((0.6, 0.4, 0.6), (0.0, 1.0, 0.0), (-12.0, 0.2, -12.0)),  # Caja 2
+        Caja((2, 1, 2), (0.0, 0.0, 1.0), (-14.0, 0.5, -14.0)),  # Caja 3
+        Caja((3, 3, 3), (1.0, 1.0, 0.0), (-16.0, 1.5, -16.0)),  # Caja 4
+        Caja((3, 4, 3), (1.0, 0.0, 1.0), (-18.0, 2.0, -18.0))   # Caja 5
+    ]
 
     clock = pygame.time.Clock()
     done = False  # Initialize the done variable
@@ -320,8 +281,9 @@ def main():
         draw_floor(floor_texture)
         glBindTexture(GL_TEXTURE_2D, 0)  # Liberar la textura del piso
 
-        # Dibujar la caja
-        caja.draw()
+        # Dibujar las cajas
+        for caja in cajas:
+            caja.draw()
 
         # Update simulation and get updated robot states
         robots_data = update_simulation(simulation_id)
