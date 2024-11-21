@@ -195,7 +195,7 @@ def main():
     # Configuración de OpenGL en main.py
     glEnable(GL_DEPTH_TEST)  # Habilitar el test de profundidad
     
-    glClearColor(1.0, 1.0, 1.0, 1.0)  # Fondo blanco (puedes ajustar los valores para probar diferentes colores)
+    glClearColor(135/255, 206/255, 250/255, 1.0)  # Fondo azul claro (135, 206, 250)
     
     glEnable(GL_CULL_FACE)  # (Normalmente habilitado, pero lo deshabilitaremos para probar)
     glDisable(GL_CULL_FACE)  # <--- Aquí deshabilitamos el culling
@@ -231,11 +231,11 @@ def main():
 
     # Crear 5 cajas en el tercer cuadrante con diferentes dimensiones
     cajas = [
-        Caja((1, 1, 1), (1.0, 0.0, 0.0), (-10.0, 0.5, -10.0)),  # Caja 1
-        Caja((0.6, 0.4, 0.6), (0.0, 1.0, 0.0), (-12.0, 0.2, -12.0)),  # Caja 2
-        Caja((2, 1, 2), (0.0, 0.0, 1.0), (-14.0, 0.5, -14.0)),  # Caja 3
-        Caja((3, 3, 3), (1.0, 1.0, 0.0), (-16.0, 1.5, -16.0)),  # Caja 4
-        Caja((3, 4, 3), (1.0, 0.0, 1.0), (-18.0, 2.0, -18.0))   # Caja 5
+        Caja((1, 1, 1), (198/255, 154/255, 101/255), (-10.0, 0.5, -10.0)),  # Caja 1
+        Caja((0.6, 0.4, 0.6), (198/255, 154/255, 101/255), (-12.0, 0.2, -12.0)),  # Caja 2
+        Caja((2, 1, 2), (198/255, 154/255, 101/255), (-14.0, 0.5, -14.0)),  # Caja 3
+        Caja((3, 3, 3), (198/255, 154/255, 101/255), (-16.0, 1.5, -16.0)),  # Caja 4
+        Caja((3, 4, 3), (198/255, 154/255, 101/255), (-18.0, 2.0, -18.0))   # Caja 5
     ]
 
     clock = pygame.time.Clock()
