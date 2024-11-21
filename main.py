@@ -65,6 +65,15 @@ class Camera:
             UP_X, UP_Y, UP_Z
         )
 
+def move_robot(simulation_id, velocidad, tiempo):
+    url = f"{API_BASE_URL}/simulation/{simulation_id}/move"
+    payload = {"velocidad": velocidad, "tiempo": tiempo}
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        print("Robot moved successfully")
+    else:
+        print("Failed to move robot:", response.json())
+
 # Función para cargar texturas
 def load_texture(texture_path):
     try:

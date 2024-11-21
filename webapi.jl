@@ -23,29 +23,36 @@ end
 # Update simulation
 route("/simulation/:id", method = POST) do
     id = payload(:id)
-    println("Received request to update simulation with id: ", id)  # Depuración
+    println("Received request to update simulation with id: ", id)
 
     if !haskey(robots, id)
         status(404)
         return json(Dict("error" => "Simulation not found"))
     end
 
+    velocidad = try parse(Float64, jsonpayload()["velocidad"]) catch e 1.0 end
+    tiempo = try parse(Float64, jsonpayload()["tiempo"]) catch e 1.0 end
+
+    for robot in robots[id]
+        ModuloRobot.mover_robot!(robot, velocidad * tiempo, robot.angulo)
+    end
+
     try
-        println("Current robots: ", robots)  # Depuración
-        # Update each robot's state
+        println("Current robots: ", robots)
+        # Actualizar el estado del robot
         for robot in robots[id]
-            println("Before update, robot: ", robot)  # Depuración
-            ModuloRobot.update(robot)  # Llamada directa a la función exportada
-            println("After update, robot: ", robot)  # Depuración
+            println("Before update, robot: ", robot) 
+            ModuloRobot.update(robot) 
+            println("After update, robot: ", robot)  
         end
 
-        # Return updated robot states
+        # Devolver el estado
         updated_robots = [ModuloRobot.to_dict(robot) for robot in robots[id]]
-        println("API Response (robots): ", updated_robots)  # Depuración
+        println("API Response (robots): ", updated_robots) 
         return json(Dict("robots" => updated_robots))
     catch e
         println("Error updating simulation: ", e)
-        println("Stacktrace: ", catch_backtrace())  # Depuración de stacktrace
+        println("Stacktrace: ", catch_backtrace())
         return halt(500, json(Dict("error" => "Internal Server Error")))  # Usar halt para devolver el error
     end
 end
