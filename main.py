@@ -11,6 +11,7 @@ import random
 from Caja import Caja
 from Cubo import Cubo
 from Robot import Robot  # Importar la clase Robot en lugar de Lifter
+from Camion import draw_rectangle_on_floor
 
 API_BASE_URL = "http://127.0.0.1:8000"  # URL of the Genie server
 
@@ -301,6 +302,9 @@ def main():
 
         # Dibujar el robot montacargas (Robot)
         robot.draw()
+
+        # Dibujar el rectángulo en el plano "Floor"
+        draw_rectangle_on_floor()
 
         # Actualizar la pantalla
         pygame.display.flip()

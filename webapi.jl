@@ -35,7 +35,7 @@ route("/simulation/:id", method = POST) do
         # Update each robot's state
         for robot in robots[id]
             println("Before update, robot: ", robot)  # Depuración
-            update(robot)  # Llamada directa a la función exportada
+            ModuloRobot.update(robot)  # Llamada directa a la función exportada
             println("After update, robot: ", robot)  # Depuración
         end
 
@@ -46,8 +46,7 @@ route("/simulation/:id", method = POST) do
     catch e
         println("Error updating simulation: ", e)
         println("Stacktrace: ", catch_backtrace())  # Depuración de stacktrace
-        res.status = 500  # Asegúrate de que 'res' sea accesible
-        return json(Dict("error" => "Internal Server Error"))
+        return halt(500, json(Dict("error" => "Internal Server Error")))  # Usar halt para devolver el error
     end
 end
 

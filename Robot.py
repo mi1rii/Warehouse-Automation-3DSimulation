@@ -7,7 +7,6 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from OpenGL.GLUT import *
 
-import random
 import math
 
 class Robot:
