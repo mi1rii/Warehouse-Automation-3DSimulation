@@ -9,8 +9,12 @@ def draw_rectangle_on_floor():
     rect_x = 20  # Coordenada X del rectángulo
     rect_y = 0.0  # Coordenada Y del rectángulo
 
+    # Habilitar la mezcla para la transparencia
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
     # Dibujar el prisma rectangular en el plano "Floor"
-    glColor3f(1.0, 1.0, 1.0)  # Color blanco para el relleno
+    glColor4f(1.0, 1.0, 1.0, 0.5)  # Color blanco con transparencia
     glBegin(GL_QUADS)
     # Cara inferior
     glVertex3f(rect_x, 0, rect_y)
@@ -71,3 +75,6 @@ def draw_rectangle_on_floor():
     glVertex3f(rect_x, 0, rect_y + rect_depth)
     glVertex3f(rect_x, rect_height, rect_y + rect_depth)
     glEnd()
+
+    # Deshabilitar la mezcla
+    glDisable(GL_BLEND)
