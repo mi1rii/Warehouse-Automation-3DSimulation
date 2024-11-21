@@ -154,6 +154,29 @@ def handle_keys(camera, keys):
     if keys[pygame.K_d]:
         camera.angle_h += 1.0
 
+def initialize_simulation():
+    try:
+        response = requests.post(f"{API_BASE_URL}/simulation", json={"num_robots": 1})
+        response.raise_for_status()
+        data = response.json()
+        return data["id"], data["robots"]
+    except requests.RequestException as e:
+        print(f"Error initializing simulation: {e}")
+        return None, []
+
+def update_simulation(simulation_id):
+    try:
+        response = requests.post(f"{API_BASE_URL}/simulation/{simulation_id}")
+        response.raise_for_status()
+        data = response.json()
+        return data["robots"]
+    except requests.RequestException as e:
+        print(f"Error updating simulation: {e}")
+        if response is not None:
+            print(f"Response status code: {response.status_code}")
+            print(f"Response content: {response.content}")
+        return []
+
 def main():
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DOUBLEBUF | OPENGL)
@@ -186,10 +209,10 @@ def main():
     glEnable(GL_TEXTURE_2D)
 
     # Cargar las texturas
-    floor_texture = load_texture("Floor.jpg")
-    wheel_texture = load_texture("Wheel.jpg")         # Textura para las ruedas
-    body_texture = load_texture("RobotBody.jpg")      # Textura para el cuerpo del robot
-    head_texture = load_texture("Head.jpg")           # Textura para la cabeza del robot
+    floor_texture = load_texture("textures/Floor.jpg")
+    wheel_texture = load_texture("textures/Wheel.jpg")         # Textura para las ruedas
+    body_texture = load_texture("textures/RobotBody.jpg")      # Textura para el cuerpo del robot
+    head_texture = load_texture("textures/Head.jpg")           # Textura para la cabeza del robot
 
     # Arreglo de texturas para Robot
     robot_textures = [floor_texture, wheel_texture, body_texture, head_texture]
@@ -197,14 +220,20 @@ def main():
     # Crear instancia de la cámara
     camera = Camera()
 
-    # Crear instancia de Robot
+    # Initialize simulation
+    simulation_id, robots_data = initialize_simulation()
+    if not simulation_id:
+        print("Failed to initialize simulation. Exiting.")
+        return
+
+    # Crear instancia de Robot con datos iniciales
     robot = Robot(dim=1, vel=1, textures=[])  # No need to pass textures anymore
 
     clock = pygame.time.Clock()
-    done = False
+    done = False  # Initialize the done variable
 
     # Variables para el movimiento del ratón
-    pygame.event.set_grab(True)  # Capturar el ratón
+    pygame.event.set_grab(True)  # Capturar el rat��n
     pygame.mouse.set_visible(False)  # Ocultar el cursor del ratón
 
     while not done:
@@ -243,8 +272,19 @@ def main():
         draw_floor(floor_texture)
         glBindTexture(GL_TEXTURE_2D, 0)  # Liberar la textura del piso
 
-        # *** Eliminado: Actualización de posición y rotación del robot ***
-        # Para mantener el robot estático, no actualizamos su posición ni ángulo.
+        # Update simulation and get updated robot states
+        robots_data = update_simulation(simulation_id)
+        if not robots_data:
+            print("Failed to update simulation. Exiting.")
+            break
+
+        # Ensure robots_data is not empty before accessing its elements
+        if robots_data:
+            robot_data = robots_data[0]
+            robot.update_from_dict(robot_data)
+        else:
+            print("No robot data received. Exiting.")
+            break
 
         # Dibujar el robot montacargas (Robot)
         robot.draw()

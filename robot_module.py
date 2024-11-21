@@ -1,4 +1,5 @@
-# Robot.py
+
+# robot_module.py
 import pygame
 from pygame.locals import *
 from Cubo import Cubo
@@ -207,8 +208,6 @@ class Robot:
         glPopMatrix()
 
     def update_from_dict(self, data):
-        # Actualizar la posición y el ángulo del robot
-        self.Position[0] = data["position"][0]  # Posición X
-        self.Position[2] = data["position"][1]  # Posición Z (asumiendo Y como altura)
+        self.position = data["position"]
         self.angle = data["angle"]
-        # Actualiza otros atributos si es necesario
+        # Update other attributes as needed
