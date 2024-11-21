@@ -15,7 +15,7 @@ class Robot:
         self.dim = dim
         self.vel = vel
         self.textures = textures
-        self.Position = [0, 6, 0]
+        self.Position = [0, 2, 0]  # Posición inicial centrada en el plano
 
         dirX = random.randint(-10, 10)
         dirZ = random.randint(-10, 10)
@@ -31,7 +31,7 @@ class Robot:
     def draw(self):
         glPushMatrix()
         # Translate to the truck's position (place it slightly above the floor)
-        glTranslatef(self.Position[0], 2, self.Position[2])  # Set y = 0.5 to raise the truck
+        glTranslatef(self.Position[2], 2, self.Position[2])  # Posición Y ajustada
 
         # Rotate the truck if needed
         glRotatef(self.angle, 0, 1, 0)
