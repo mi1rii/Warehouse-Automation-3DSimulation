@@ -1,6 +1,6 @@
-# robot
+# robot.jl
 
-include("caja.jl") 
+include("caja.jl")
 using .ModuloCaja
 using Statistics  # Importar el módulo Statistics para mean y std
 
@@ -17,22 +17,23 @@ module ModuloRobot
         zonaDescarga::Float64
         posicion::Vector{Float64}            # [x, y, z] posición del robot
         estado_robot::String                 # Estado actual del robot
-        contador::Int                         # Contador de eventos
+        contador::Int                        # Contador de eventos
         puntoCarga::Vector{Float64}          # Punto de carga asociado al robot
         caja_recogida::Union{Nothing, Main.ModuloCaja.Caja}  # Caja actualmente recogida
-        angulo::Float64                       # Ángulo de orientación del robot
+        angulo::Float64                      # Ángulo de orientación del robot
         rotando::Bool                        # Indica si el robot está rotando
-        angulo_objetivo::Float64              # Ángulo objetivo para rotar
-        velocidad_rotacion::Float64           # Velocidad de rotación
-        velocidad::Float64                    # Velocidad de movimiento
+        angulo_objetivo::Float64             # Ángulo objetivo para rotar
+        velocidad_rotacion::Float64          # Velocidad de rotación
+        velocidad::Float64                   # Velocidad de movimiento
         zona_descarga_robot::Tuple{Float64, Float64, Float64, Float64}  # Zona de descarga asignada
         posiciones_pilas::Vector{Vector{Float64}}  # Posiciones de las pilas en la zona de descarga
-        indice_pila_actual::Int               # Índice de la pila actual
-        altura_pila_actual::Int               # Altura actual de la pila
-        margin::Float64                       # Margen para límites del tablero
-        seccionAlmacen::Int                   # Sección de almacenamiento asignada
-        movement_count::Int                   # Contador de movimientos realizados
-        boxes_carried::Int                    # Contador de cajas transportadas
+        indice_pila_actual::Int              # Índice de la pila actual
+        altura_pila_actual::Int              # Altura actual de la pila
+        margin::Float64                      # Margen para límites del tablero
+        seccionAlmacen::Int                  # Sección de almacenamiento asignada
+        movement_count::Int                  # Contador de movimientos realizados
+        boxes_carried::Int                   # Contador de cajas transportadas
+        cajas_almacenadas::Vector{Main.ModuloCaja.Caja}  # Cajas en la zona de descarga
     end
 
     function to_dict(robot::Robot)
@@ -41,7 +42,7 @@ module ModuloRobot
             "angle" => robot.angulo,
             "state" => robot.estado_robot,
             "movement_count" => robot.movement_count,  # Contador de movimientos
-            "boxes_carried" => robot.boxes_carried       # Contador de cajas transportadas
+            "boxes_carried" => robot.boxes_carried     # Contador de cajas transportadas
         )
     end
 
@@ -63,11 +64,11 @@ module ModuloRobot
         estado_robot = "buscar"       # Estado inicial
         contador = 0
         puntoCarga = zeros(3)         # Punto de carga inicializado en (0,0,0)
-        caja_recogida = nothing        # No hay caja recogida inicialmente
+        caja_recogida = nothing       # No hay caja recogida inicialmente
         rotando = false
         angulo_objetivo = angulo
         velocidad_rotacion = pi / 4    # Velocidad de rotación
-        velocidad = 100                 # Velocidad de movimiento con vel o vemos
+        velocidad = 100                 # Velocidad de movimiento
 
         # Asignar sección de almacenamiento única a cada robot
         seccionAlmacen = num_robot
@@ -95,11 +96,14 @@ module ModuloRobot
         indice_pila_actual = 1
         altura_pila_actual = 0
 
+        # Inicializar vector para cajas almacenadas
+        cajas_almacenadas = Vector{Main.ModuloCaja.Caja}()
+
         # Crear instancia del robot
         robot = Robot(dimBoard, zonaDescarga, posicion, estado_robot, contador, puntoCarga, caja_recogida,
                       angulo, rotando, angulo_objetivo, velocidad_rotacion, velocidad,
                       zona_descarga_robot, posiciones_pilas, indice_pila_actual, altura_pila_actual,
-                      margin, seccionAlmacen, 0, 0)  # movement_count y boxes_carried inicializados a 0
+                      margin, seccionAlmacen, 0, 0, cajas_almacenadas)
         updatePuntoCarga!(robot)  # Actualizar punto de carga
         return robot
     end
@@ -119,37 +123,31 @@ module ModuloRobot
 
     # Función para transportar una caja por el robot
     function transportar(robot::Robot, caja)
-        println("Attempting to transport box...")  # Debug: Entrada a la función
         Main.ModuloCaja.setPos(caja, robot.puntoCarga, robot.angulo)  # Actualizar posición de la caja
         Main.ModuloCaja.set_estado_caja(caja, "recogida")             # Cambiar estado de la caja
         robot.caja_recogida = caja                                   # Asignar caja al robot
         robot.estado_robot = "caja_recogida"                         # Actualizar estado del robot
-        println("Box is now being transported. Robot state: ", robot.estado_robot)  # Debug: Confirmación
     end
 
     # Función para soltar una caja en la zona de descarga
     function soltar(robot::Robot)
         if robot.caja_recogida != nothing
-            # Obtener posición de la pila actual
-            pila_pos = robot.posiciones_pilas[robot.indice_pila_actual]
-            altura = robot.altura_pila_actual * 6.0  # Incrementar altura para apilar
-            pos_caja = [pila_pos[1], pila_pos[2], 3.0 + altura]  # Nueva posición de la caja
+            # Añadir la caja al vector de cajas almacenadas
+            push!(robot.cajas_almacenadas, robot.caja_recogida)
 
-            # Actualizar posición y estado de la caja
-            Main.ModuloCaja.setPosYEstado!(robot.caja_recogida, pos_caja, 0.0, "soltada")
-            robot.altura_pila_actual += 1  # Incrementar altura de pila
+            # Ordenar las cajas almacenadas por volumen
+            sort!(robot.cajas_almacenadas, by = caja -> Main.ModuloCaja.get_volumen_caja(caja))
 
-            # Verificar si se necesita crear una nueva pila
-            if robot.altura_pila_actual >= 5
-                robot.altura_pila_actual = 0
-                robot.indice_pila_actual += 1
-                if robot.indice_pila_actual > length(robot.posiciones_pilas)
-                    # Crear una nueva pila a la derecha
-                    new_pila_x = last(robot.posiciones_pilas)[1] + 20.0
-                    new_pila_y = last(robot.posiciones_pilas)[2]
-                    push!(robot.posiciones_pilas, [new_pila_x, new_pila_y])
-                    robot.indice_pila_actual = length(robot.posiciones_pilas)
-                end
+            # Reubicar las cajas en la zona de descarga según el orden
+            for (i, caja) in enumerate(robot.cajas_almacenadas)
+                # Calcular posición en la zona de descarga
+                x_min, x_max, y_min, y_max = robot.zona_descarga_robot
+                x_pos = x_min + (i - 0.5) * ((x_max - x_min) / length(robot.cajas_almacenadas))
+                y_pos = (y_min + y_max) / 2  # Posición Y centrada
+                pos_caja = [x_pos, y_pos, 3.0]  # Altura fija
+
+                # Actualizar posición y estado de la caja
+                Main.ModuloCaja.setPosYEstado!(caja, pos_caja, 0.0, "soltada")
             end
 
             # Reiniciar estado del robot
@@ -170,7 +168,7 @@ module ModuloRobot
                 println("  Promedio de movimientos por caja: N/A (No ha transportado cajas)")
             end
 
-            println("Robot is now ready to search for the next box.")  # Debug: Confirmación
+            println("Robot is now ready to search for the next box.")  # Confirmación
         else
             println("Warning: Attempting to release a box, but no box is currently held by the robot.")  # Advertencia
         end
@@ -183,20 +181,16 @@ module ModuloRobot
 
     # Manejador de eventos para el estado del robot
     function eventHandler!(robot::Robot, paquetes)
-        println("Current robot state: ", robot.estado_robot)  # Debug: Estado actual
-
         try
             if robot.estado_robot == "buscar"
                 # Encontrar la caja más cercana que esté esperando
                 closest_box = nothing
-                min_distance = 1000.0  # Rango máximo de detección corregido a 1000.0 unidades
-                println("Robot buscando cajas dentro de rango de 1000.0 unidades.")
+                min_distance = 1000.0  # Rango máximo de detección
 
                 for box in paquetes
                     if Main.ModuloCaja.get_estado_caja(box) == "esperando"
                         box_pos = Main.ModuloCaja.get_posicion_caja(box)
                         dist = norm([robot.posicion[1] - box_pos[1], robot.posicion[2] - box_pos[2]])
-                        #println("Evaluando caja en posición ", box_pos, " con distancia ", dist)
                         if dist < min_distance
                             min_distance = dist
                             closest_box = box
@@ -210,40 +204,35 @@ module ModuloRobot
                     robot.angulo_objetivo = atan(box_pos[2] - robot.posicion[2], box_pos[1] - robot.posicion[1])
                     robot.rotando = true
                     robot.estado_robot = "rotando_a_caja"
-                    println("Targeting box at position: ", box_pos)
-                else
-                    println("No available boxes found.")
                 end
 
             elseif robot.estado_robot == "rotando_a_caja"
                 # Después de rotar, cambiar a estado de movimiento hacia la caja
                 if !robot.rotando
                     robot.estado_robot = "moviendo_a_caja"
-                    println("Rotation complete. Moving towards the box.")
                 end
 
             elseif robot.estado_robot == "moviendo_a_caja"
                 # Verificar distancia a la caja objetivo y recogerla si está cerca
-                closest_box = nothing
-                min_distance = 1000.0  # Rango máximo de detección corregido a 1000.0 unidades
-                println("Robot moviéndose hacia la caja.")
+                if robot.caja_recogida == nothing
+                    closest_box = nothing
+                    min_distance = 1000.0  # Rango máximo de detección
 
-                for box in paquetes
-                    if Main.ModuloCaja.get_estado_caja(box) == "esperando"
-                        box_pos = Main.ModuloCaja.get_posicion_caja(box)
-                        dist = norm([robot.posicion[1] - box_pos[1], robot.posicion[2] - box_pos[2]])
-                        #println("Evaluando caja en posición ", box_pos, " con distancia ", dist)
-                        if dist < min_distance
-                            min_distance = dist
-                            closest_box = box
+                    for box in paquetes
+                        if Main.ModuloCaja.get_estado_caja(box) == "esperando"
+                            box_pos = Main.ModuloCaja.get_posicion_caja(box)
+                            dist = norm([robot.posicion[1] - box_pos[1], robot.posicion[2] - box_pos[2]])
+                            if dist < min_distance
+                                min_distance = dist
+                                closest_box = box
+                            end
                         end
                     end
-                end
 
-                if closest_box != nothing && min_distance < 10.0
-                    println("Arrived at box. Picking up box.")  # Debug
-                    transportar(robot, closest_box)             # Transportar la caja
-                    robot.estado_robot = "caja_recogida"         # Actualizar estado
+                    if closest_box != nothing && min_distance < 10.0
+                        transportar(robot, closest_box)  # Transportar la caja
+                        robot.estado_robot = "caja_recogida"  # Actualizar estado
+                    end
                 end
 
             elseif robot.estado_robot == "caja_recogida"
@@ -253,13 +242,11 @@ module ModuloRobot
                 robot.angulo_objetivo = atan(y_center - robot.posicion[2], x_center - robot.posicion[1])
                 robot.rotando = true
                 robot.estado_robot = "rotando_a_descarga"
-                println("Heading to drop-off zone. Target angle: ", robot.angulo_objetivo)  # Debug
 
             elseif robot.estado_robot == "rotando_a_descarga"
                 # Después de rotar, cambiar a estado de movimiento hacia la descarga
                 if !robot.rotando
                     robot.estado_robot = "yendo_a_descarga"
-                    println("Rotation complete. Moving towards the drop-off zone.")
                 end
 
             elseif robot.estado_robot == "yendo_a_descarga"
@@ -269,20 +256,18 @@ module ModuloRobot
 
                 if x >= x_min && x <= x_max && y >= y_min && y <= y_max
                     robot.estado_robot = "soltando_caja"  # Cambiar a estado de soltar
-                    println("Reached drop-off zone.")
                 end
 
             elseif robot.estado_robot == "soltando_caja"
-                println("Releasing box at drop-off zone...")  # Debug
-                soltar(robot)                                  # Soltar la caja
-                robot.estado_robot = "buscar"                   # Reiniciar estado
-                robot.angulo_objetivo = pi/2                    # Dirección estándar hacia arriba
+                soltar(robot)  # Soltar la caja
+                robot.estado_robot = "buscar"  # Reiniciar estado
+                robot.angulo_objetivo = pi/2  # Dirección estándar hacia arriba
                 robot.rotando = true
             end
 
         catch e
-            println("Error in eventHandler!: ", e)               # Debug: Error en manejador
-            println("Stacktrace: ", stacktrace(e))               # Debug: Stacktrace
+            println("Error in eventHandler!: ", e)  # Error en manejador
+            println("Stacktrace: ", stacktrace(e))
         end
     end
 
@@ -322,7 +307,6 @@ module ModuloRobot
 
                 # Verificar si el nuevo movimiento está dentro de los límites
                 if new_x < x_min || new_x > x_max || new_y < y_min || new_y > y_max
-                    println("Robot alcanzó un límite. Ajustando dirección.")  # Debug
                     robot.angulo += π  # Girar 180 grados
                     robot.angulo = wrap(robot.angulo)  # Normalizar ángulo
                 else
@@ -341,8 +325,8 @@ module ModuloRobot
             end
 
         catch e
-            println("Error in update: ", e)             # Debug: Error en actualización
-            println("Stacktrace: ", Base.stacktrace())  # Debug: Stacktrace
+            println("Error in update: ", e)             # Error en actualización
+            println("Stacktrace: ", Base.stacktrace())
         end
     end
 
