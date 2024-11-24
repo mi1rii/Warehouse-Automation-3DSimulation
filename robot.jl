@@ -1,82 +1,146 @@
-# robot.jl
-
-include("caja.jl")
-using .ModuloCaja
-using Statistics  # Importar el módulo Statistics para mean y std
-
 module ModuloRobot
-    export Robot, crearRobot, update, transportar, soltar
-    export get_estado_robot, get_posicion, get_angulo, asignar_zona_descarga
-    export imprimir_estadisticas
-    using Random
-    using LinearAlgebra  # Para operaciones vectoriales
 
-    mutable struct Robot
-        dimBoard::Float64
-        zonaDescarga::Float64
-        posicion::Vector{Float64}            # [x, y, z] posición del robot
-        estado_robot::String                 # Estado actual del robot
-        contador::Int                         # Contador de eventos
-        puntoCarga::Vector{Float64}          # Punto de carga asociado al robot
-        caja_recogida::Union{Nothing, Main.ModuloCaja.Caja}  # Caja actualmente recogida
-        angulo::Float64                       # Ángulo de orientación del robot
-        rotando::Bool                        # Indica si el robot está rotando
-        angulo_objetivo::Float64              # Ángulo objetivo para rotar
-        velocidad_rotacion::Float64           # Velocidad de rotación
-        velocidad::Float64                    # Velocidad de movimiento
-        zona_descarga_robot::Tuple{Float64, Float64, Float64, Float64}  # Zona de descarga asignada
-        posiciones_pilas::Vector{Vector{Float64}}  # Posiciones de las pilas en la zona de descarga
-        indice_pila_actual::Int               # Índice de la pila actual
-        altura_pila_actual::Int               # Altura actual de la pila
-        margin::Float64                       # Margen para límites del tablero
-        seccionAlmacen::Int                   # Sección de almacenamiento asignada
-        movement_count::Int                   # Contador de movimientos realizados
-        boxes_carried::Int                    # Contador de cajas transportadas
+export Robot, crearRobot, mover_robot!, to_dict
+
+# Define the Robot type with necessary properties
+mutable struct Robot
+    x::Float64       # Position X
+    y::Float64       # Position Y (height)
+    z::Float64       # Position Z
+    angulo::Float64  # Orientation angle
+    velocidad::Float64
+    target_x::Float64
+    target_y::Float64
+    estado::Symbol   # :idle, :moving, :picking, :dropping
+    last_target_time::Float64
+end
+
+# Constructor for creating a new robot
+function crearRobot(pos_inicial::Float64, vel_inicial::Float64)
+    Robot(
+        0.0,            # Initial X position
+        0.0,            # Initial Y position
+        0.0,            # Initial Z position
+        0.0,            # Initial angle
+        vel_inicial,    # Initial velocity
+        0.0,           # Initial target X
+        0.0,           # Initial target Z
+        :idle,         # Initial state
+        time()         # Current time
+    )
+end
+
+# Convert robot state to dictionary for JSON serialization
+function to_dict(robot::Robot)
+    Dict(
+        "x" => robot.x,
+        "y" => robot.y,
+        "z" => robot.z,
+        "angulo" => robot.angulo,
+        "velocidad" => robot.velocidad,
+        "estado" => string(robot.estado)
+    )
+end
+
+# Generate a new random target within bounds
+function generar_nuevo_objetivo!(robot::Robot)
+    # Define boundaries (matching your Python frontend)
+    max_bound = 45.0
+    min_bound = -45.0
+    
+    # Generate new target position
+    robot.target_x = 0
+    robot.target_y = 10
+    robot.last_target_time = time()
+    robot.estado = :moving
+    
+    # Calculate new angle towards target
+    dx = robot.target_x - robot.x
+    dy = robot.target_y - robot.y
+    robot.angulo = atan(dx, dy)
+end
+
+# Check if robot has reached its target
+function ha_llegado_objetivo(robot::Robot)
+    dx = robot.target_x - robot.x
+    dy = robot.target_y - robot.y
+    distancia = sqrt(dx^2 + dy^2)
+    return distancia < 0.1
+end
+
+# Main movement function
+function mover_robot!(robot::Robot, tiempo::Float64, angulo::Float64)
+    # If idle, potentially generate new target
+    if robot.estado == :idle
+        if time() - robot.last_target_time > 2.0  # Wait 2 seconds between movements
+            generar_nuevo_objetivo!(robot)
+        end
+        return
     end
 
-    function to_dict(robot::Robot)
-        return Dict(
-            "position" => robot.posicion,
-            "angle" => robot.angulo,
-            "state" => robot.estado_robot,
-            "movement_count" => robot.movement_count,  # Contador de movimientos
-            "boxes_carried" => robot.boxes_carried       # Contador de cajas transportadas
-        )
+    # If moving, update position
+    if robot.estado == :moving
+        # Calculate direction vector
+        dx = robot.target_x - robot.x
+        dy = robot.target_y - robot.y
+        distancia = sqrt(dx^2 + dy^2)
+        
+        if distancia < 0.1
+            robot.estado = :idle
+            robot.last_target_time = time()
+            return
+        end
+        
+        # Normalize direction and apply velocity
+        velocidad_actual = robot.velocidad * tiempo
+        robot.x += (dx / distancia) * velocidad_actual
+        robot.y += (dy / distancia) * velocidad_actual
+        
+        # Update angle towards movement direction
+        robot.angulo = atan(dx, dy)
+        
+        # Optional: Add smooth height variations
+        robot.y = 0.1 * sin(time()) # Small up/down movement
+        
+        # Boundary checking
+        max_bound = 45.0
+        robot.x = clamp(robot.x, -max_bound, max_bound)
+        robot.y = clamp(robot.y, -max_bound, max_bound)
     end
+end
 
-    function crearRobot(dimBoard::Float64, zonaDescarga::Float64, vel::Float64, num_robot::Int, total_robots::Int, margin::Float64)
-        # Definir límites de posición inicial evitando márgenes y zona de descarga
-        x_min = margin
-        x_max = dimBoard - margin
-        y_min = margin
-        y_max = dimBoard - margin
-        x = rand() * (x_max - x_min) + x_min
-        y = rand() * (y_max - y_min) + y_min
-        posicion = [x, y, 0.0]  # Mantener z en el piso (0.0)
+# Optional: Add functions for more complex behaviors
+function iniciar_recogida!(robot::Robot)
+    robot.estado = :picking
+    robot.z = 1.0  # Raise forklift
+end
 
-        # Asignar ángulo inicial
-        angulo = pi/2  # Orientación inicial hacia el eje Z negativo
-        estado_robot = "buscar"       # Estado inicial
-        contador = 0
-        puntoCarga = zeros(3)         # Punto de carga inicializado en (0,0,0)
-        caja_recogida = nothing        # No hay caja recogida inicialmente
-        rotando = false
-        angulo_objetivo = angulo
-        velocidad_rotacion = pi / 4    # Velocidad de rotación
-        velocidad = vel                 # Velocidad de movimiento
+function finalizar_recogida!(robot::Robot)
+    robot.estado = :moving
+    robot.z = 0.0  # Lower forklift
+end
 
-        # Asignar sección de almacenamiento única a cada robot
-        seccionAlmacen = num_robot
+function pausar_robot!(robot::Robot)
+    robot.estado = :idle
+end
 
-        # Crear instancia del robot
-        robot = Robot(dimBoard, zonaDescarga, posicion, estado_robot, contador, puntoCarga, caja_recogida,
-                      angulo, rotando, angulo_objetivo, velocidad_rotacion, velocidad,
-                      (0.0, 0.0, 0.0, 0.0), [], 1, 0,
-                      margin, seccionAlmacen, 0, 0)
-        updatePuntoCarga!(robot)  # Actualizar punto de carga
-        return robot
+function reanudar_robot!(robot::Robot)
+    robot.estado = :moving
+end
+
+# Optional: Add collision avoidance
+function verificar_colision(robot::Robot, otros_robots::Vector{Robot})
+    for otro in otros_robots
+        if otro !== robot  # Don't check against self
+            dx = robot.x - otro.x
+            dy = robot.y - otro.y
+            distancia = sqrt(dx^2 + dy^2)
+            if distancia < 2.0  # Minimum safe distance
+                return true
+            end
+        end
     end
+    return false
+end
 
-    # (El resto del código permanece igual)
-
-end  # Fin del módulo ModuloRobot
+end # module

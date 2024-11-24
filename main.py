@@ -6,8 +6,12 @@ from OpenGL.GLU import *
 import math
 import random
 import numpy as np
+import requests
+import time
 
 from Caja import Caja
+
+API_BASE_URL = "http://127.0.0.1:8000"  # URL of the Genie server
 
 # Import obj loader
 from objloader import *
@@ -34,6 +38,26 @@ AXIS_LENGTH = 50
 
 objetos = []
 objetos2 = []
+
+# CONNECTION
+# Function to get the robot's position from the server
+def get_robot_position(simulation_id, robot_index=0):
+    """Get robot position from the simulation"""
+    try:
+        # Make a GET request to fetch the current state of the simulation
+        response = requests.post(f"{API_BASE_URL}/simulation/{simulation_id}")
+        response.raise_for_status()
+        data = response.json()
+        
+        # Get the robot data from the response
+        if "robots" in data and len(data["robots"]) > robot_index:
+            robot = data["robots"][robot_index]
+            return robot["x"], robot["y"], robot["z"]
+        return None, None, None
+    except requests.RequestException as e:
+        print(f"Error getting robot position: {e}")
+        return None, None, None
+
 
 # Clase para manejar la cámara
 class Camera:
@@ -65,15 +89,26 @@ class Camera:
             UP_X, UP_Y, UP_Z
         )
         
+# Define global variables for position FORKLIFT MOVEMENT
+forklift_position_x = 0.0
+forklift_position_y = 0.0
+forklift_position_z = 0.0
+
 def displayobj():
+    global forklift_position_x, forklift_position_y, forklift_position_z
+
     glPushMatrix()  
-    #correcciones para dibujar el objeto en plano XZ
-    #esto depende de cada objeto
+    # Apply the corrections to draw the object on the XZ plane
     glRotatef(-90.0, 1.0, 0.0, 0.0)
-    glTranslatef(0.0, 0.0, 0.0)
-    glScale(2.0,2.0,2.0)
-    objetos[0].render()  
+    
+    # Update the translation based on dynamic position values
+    glTranslatef(forklift_position_x, forklift_position_y, forklift_position_z)
+
+    glScale(2.0, 2.0, 2.0)
+    objetos[0].render()  # Render the first object in the 'objetos' list
+    
     glPopMatrix()
+
     
 def displayobj2():
     glPushMatrix()  
@@ -372,56 +407,94 @@ def handle_keys(camera, keys):
         camera.angle_h -= 1.0
     if keys[pygame.K_d]:
         camera.angle_h += 1.0
+        
+def initialize_simulation():
+    """Initialize the simulation and get the simulation ID"""
+    try:
+        response = requests.post(f"{API_BASE_URL}/simulation", json={"num_robots": 1})
+        response.raise_for_status()
+        data = response.json()
+        simulation_id = data["id"]
+        
+        # Get initial position
+        x, y, z = get_robot_position(simulation_id)
+        if x is None:
+            x, y, z = 0.0, 0.0, 0.0
+            
+        return simulation_id, x, y, z, data.get("robots", [])
+    except requests.RequestException as e:
+        print(f"Error initializing simulation: {e}")
+        return None, 0.0, 0.0, 0.0, []
+
+def update_robot_position(simulation_id):
+    """Update the robot's position"""
+    global forklift_position_x, forklift_position_y, forklift_position_z
+    x, y, z = get_robot_position(simulation_id)
+    if x is not None and y is not None and z is not None:
+        forklift_position_x = x
+        forklift_position_y = y
+        forklift_position_z = z
+        
+def interpolate_position(current, target, alpha):
+    return current + (target - current) * alpha
+
 
 def main():
+    global forklift_position_x, forklift_position_y, forklift_position_z
+
+    # Initialize variables for position updates
+    position_update_interval = 0.1  # Update every 100ms
+    last_position_fetch_time = time.time()
+    # Initialize Pygame and OpenGL
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("Simulación 3D: Piso Texturizado y Ejes 3D")
+    pygame.display.set_caption("Simulación 3D")
 
-    # Configuración de la proyección
+    # OpenGL projection and modelview setup
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
     gluPerspective(FOVY, SCREEN_WIDTH / SCREEN_HEIGHT, ZNEAR, ZFAR)
-
-    # Configuración de la vista
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
-    
-    glEnable(GL_DEPTH_TEST)  # Habilitar prueba de profundidad
-    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)  # Habilitar doble cara
-    glDisable(GL_CULL_FACE)  # Asegurarse de que se rendericen ambas caras
-
-    # Habilitar texturas
+    glEnable(GL_DEPTH_TEST)
+    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)
+    glDisable(GL_CULL_FACE)
     glEnable(GL_TEXTURE_2D)
 
-    # Cargar la textura del piso
+    # Load textures and models
     floor_texture = load_texture("floor.jpg")
-
-    # Crear instancia de la cámara
     camera = Camera()
     objetos.append(OBJ("forklift.obj", swapyz=True))
     objetos[0].generate()
-    
     objetos2.append(OBJ("truck.obj", swapyz=True))
     objetos2[0].generate()
-    
+
+    # Generate boxes
     num_cajas = 50
     box_positions = generate_box_positions(num_cajas)
-
-    # Crear las cajas con las posiciones, dimensiones y colores generados
     cajas = [
         Caja(dimensions, color, (x, y, z))
         for x, y, z, dimensions, color in box_positions
     ]
 
+    # Initialize simulation and get robot id
+    robot_id, forklift_position_x, forklift_position_y, forklift_position_z, robots = initialize_simulation()
+    if robot_id is None:
+        print("Failed to initialize simulation.")
+        return
 
+    # Pygame clock for framerate control
     clock = pygame.time.Clock()
+    pygame.event.set_grab(True)  # Capture mouse
+    pygame.mouse.set_visible(False)
+    
+    simulation_id, forklift_position_x, forklift_position_y, forklift_position_z, robots = initialize_simulation()
+    if simulation_id is None:
+        print("Failed to initialize simulation.")
+        return
+
+    # Main loop
     done = False
-
-    # Variables para el movimiento del ratón
-    pygame.event.set_grab(True)  # Capturar el ratón
-    pygame.mouse.set_visible(False)  # Ocultar el cursor del ratón
-
     while not done:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -439,42 +512,53 @@ def main():
                 elif event.button == 5:  # Rueda del ratón hacia abajo
                     camera.distance += 1.0
                     camera.distance = min(100.0, camera.distance)
-
-        # Obtener el estado de las teclas
+                    
+        # Update robot position periodically
+        current_time = time.time()
+        if current_time - last_position_fetch_time > position_update_interval:
+            update_robot_position(simulation_id)
+            last_position_fetch_time = current_time
+        # Handle key inputs for camera movement
         keys = pygame.key.get_pressed()
         handle_keys(camera, keys)
 
-        # Aplicar la transformación de la cámara
+        # Periodically update the robot's position
+        current_time = time.time()
+        if current_time - last_position_fetch_time > position_update_interval:
+            robot_x, robot_y, robot_z = get_robot_position(1)  # Assuming robot_id = 1
+            if robot_x is not None and robot_y is not None and robot_z is not None:
+                forklift_position_x, forklift_position_y, forklift_position_z = robot_x, robot_y, robot_z
+            last_position_fetch_time = current_time  # Update the time of last position fetch
+            
+        try:
+            requests.post(f"{API_BASE_URL}/simulation/{simulation_id}", 
+                        json={"velocidad": 1.0, "tiempo": position_update_interval})
+        except requests.RequestException as e:
+            print(f"Error updating simulation: {e}")
+
+        # Update camera view
         glLoadIdentity()
         camera.apply_view()
 
-        # Limpiar buffers
+        # Clear screen and render the scene
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
-        # Dibujar los ejes
         draw_axes()
-        
-        # Dibujar el cielo (antes de cualquier otra geometría)
-
-
-        # Dibujar el piso con textura
         draw_floor(floor_texture)
         draw_skybox()
-        displayobj()
-        displayobj2()
+
+        # Render objects and forklift/robot
+        displayobj()  # Forklift
+        displayobj2()  # Truck
         draw_cajuela()
-    
-        
-        # Dibujar las cajas
+
+        # Render boxes
         for caja in cajas:
             caja.draw()
 
-
-        # Actualizar la pantalla
         pygame.display.flip()
-        clock.tick(60)  # Limitar a 60 FPS
+        clock.tick(60)  # Limit to 60 FPS
 
-    # Limpiar y salir
+    # Clean up and exit
     pygame.quit()
 
 if __name__ == "__main__":
