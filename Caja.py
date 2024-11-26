@@ -1,4 +1,4 @@
-#Caja.jl
+# Caja.py
 import numpy as np
 from OpenGL.GL import *
 
@@ -16,7 +16,7 @@ class Caja:
 
     def draw(self):
         """
-        Dibuja la caja utilizando OpenGL.
+        Dibuja la caja utilizando OpenGL, asegurando que ambas caras sean visibles.
         """
         width, height, depth = self.dimensions
         x, y, z = self.position
@@ -53,6 +53,9 @@ class Caja:
             [1, 0, 0],   # Derecha
         ]
 
+        # Deshabilitar face culling para renderizar ambas caras
+        glDisable(GL_CULL_FACE)
+
         # Dibujar las caras de la caja
         glColor3f(*self.color)
         glBegin(GL_QUADS)
@@ -62,18 +65,21 @@ class Caja:
                 glVertex3f(*vertices[vertex])
         glEnd()
 
-        # Dibujar bordes de la caja
+        # Dibujar bordes de la caja en color negro
         glColor3f(0.0, 0.0, 0.0)
         glBegin(GL_LINES)
         edges = [
-            (0, 1), (1, 2), (2, 3), (3, 0),
-            (4, 5), (5, 6), (6, 7), (7, 4),
-            (0, 4), (1, 5), (2, 6), (3, 7)
+            (0, 1), (1, 2), (2, 3), (3, 0),  # Aristas traseras
+            (4, 5), (5, 6), (6, 7), (7, 4),  # Aristas frontales
+            (0, 4), (1, 5), (2, 6), (3, 7)   # Aristas laterales
         ]
         for edge in edges:
             glVertex3f(*vertices[edge[0]])
             glVertex3f(*vertices[edge[1]])
         glEnd()
+
+        # Rehabilitar face culling
+        glEnable(GL_CULL_FACE)
 
     def update_position(self, new_position):
         """

@@ -38,6 +38,8 @@ AXIS_LENGTH = 50
 
 objetos = []
 objetos2 = []
+objetos3 = []
+objetos3_2 = []
 
 # CONNECTION
 # Function to get the robot's position from the server
@@ -120,6 +122,26 @@ def displayobj2():
     objetos2[0].render()  
     glPopMatrix()
     
+def displayobj3():
+    glPushMatrix()  
+    # Correcciones para dibujar el objeto en plano XZ
+    # Esto depende de cada objeto
+    glRotatef(-90.0, 100.0, 0.0, 0.0)
+    glTranslatef(0.0, 20.5, 0)
+    glScale(0.04, 0.05, 0.03)
+    objetos3[0].render()  
+    glPopMatrix()
+
+def displayobj4():
+    glPushMatrix()  
+    # Correcciones para dibujar el objeto en plano XZ
+    # Esto depende de cada objeto
+    glRotatef(-90.0, 100.0, 0.0, 0.0)
+    glTranslatef(-17.0, 20.5, 0)
+    glScale(0.04, 0.05, 0.03)
+    objetos3_2[0].render()  
+    glPopMatrix()
+
 def generate_box_positions(num_cajas):
     colors = [
         (198/255, 154/255, 101/255),  # Rojo
@@ -130,104 +152,225 @@ def generate_box_positions(num_cajas):
     ]
 
     dimensions_list = [
-        (1, 1, 1), 
-        (0.6, 0.4, 0.6), 
-        (2, 2, 2),  
-        (3, 3, 3),
-        (3, 1, 3,)
+        (3.0, 3.0, 3.0), 
+        (4.2, 4.2, 4.2), 
+        (0.6, 0.6, 0.6)
     ]
+       
+    # Definir las paredes del pasillo vertical
+    corridor_x_left = 10.0
+    corridor_x_right = 30.0
+    
+    corridor_length_start_z = 0.0    # Inicio del pasillo desde la cajuela
+    corridor_length_end_z = 35.0     # Extensión del pasillo a lo largo del eje Z
+    
+    path_width = 20.0                  # Ancho total del pasillo
 
     box_positions = []
     min_distance = 4  # Distancia mínima entre cajas
+    
+    contour_lines = [
+        ('left_wall', corridor_length_start_z, corridor_length_end_z, corridor_x_left, 'z'),
+        ('right_wall', corridor_length_start_z, corridor_length_end_z, corridor_x_right, 'z')
+    ]
 
-    for _ in range(num_cajas):
-        while True:
-            # Seleccionar un tipo de dimensiones aleatorio
-            dimensions = random.choice(dimensions_list)
-            x = random.uniform(-50.0, -1.0)  # X en el tercer cuadrante
-            z = random.uniform(50.0, -1.0)  # Z en el tercer cuadrante
-            y = dimensions[1] / 2.0 # Fijo para que la caja esté encima del piso
+    # Calcular la longitud total del contorno (dos paredes)
+    total_length = 2 * (corridor_length_end_z - corridor_length_start_z)  # 100 * 2 = 200
 
-            color = random.choice(colors)
-            # Verificar colisiones en el plano X-Z
-            collision = False
-            for pos in box_positions:
-                distance = math.sqrt((x - pos[0]) ** 2 + (z - pos[2]) ** 2)  # Comparar X e Z
-                if distance < min_distance:
-                    collision = True
-                    break
+    # Proporción de cajas en cada pared (igual para ambas)
+    fraction_per_wall = 1.0  # Todas las cajas se distribuyen en ambas paredes
 
-            if not collision:
-                box_positions.append((x, y, z, dimensions, color))
-                break
+    num_per_wall = num_cajas // 2
+    remainder = num_cajas % 2
+
+    # Calcular el espaciado entre cajas en cada pared
+    spacing_per_wall = (corridor_length_end_z - corridor_length_start_z) / (num_per_wall - 1) if num_per_wall > 1 else 0
+
+    # Función para agregar una caja si no hay colisión
+    def add_box(x, z, dimensions, color):
+        y = dimensions[1] / 2.0  # Centrar la caja sobre el piso
+        # Verificar colisión con cajas existentes (solo en el plano XZ)
+        for pos in box_positions:
+            existing_x, existing_y, existing_z, _, _ = pos
+            distance = math.sqrt((x - existing_x)**2 + (z - existing_z)**2)
+            if distance < min_distance:
+                return  # Colisión detectada, no agregar la caja
+        box_positions.append((x, y, z, dimensions, color))
+
+# Colocar cajas en la pared izquierda
+    for i in range(num_per_wall):
+        z = corridor_length_start_z + i * spacing_per_wall if num_per_wall > 1 else (corridor_length_start_z + corridor_length_end_z) / 2
+        x = corridor_x_left
+        dimensions = random.choice(dimensions_list)
+        color = random.choice(colors)
+        add_box(x, z, dimensions, color)
+
+    # Colocar cajas en la pared derecha
+    for i in range(num_per_wall):
+        z = corridor_length_start_z + i * spacing_per_wall if num_per_wall > 1 else (corridor_length_start_z + corridor_length_end_z) / 2
+        x = corridor_x_right
+        dimensions = random.choice(dimensions_list)
+        color = random.choice(colors)
+        add_box(x, z, dimensions, color)
+
+    # Si hay una caja adicional, asignarla a una de las paredes (por ejemplo, izquierda)
+    if remainder:
+        z = (corridor_length_start_z + corridor_length_end_z) / 2
+        x = corridor_x_left
+        dimensions = random.choice(dimensions_list)
+        color = random.choice(colors)
+        add_box(x, z, dimensions, color)
 
     return box_positions
 
 # Función para dibujar un cielo en forma de cubo
 
-def draw_skybox():
+def draw_corridor_path():
     glPushMatrix()
-    glEnable(GL_DEPTH_TEST)  
-    glColor3f(0.53, 0.81, 0.98)  # Color azul cielo
     
-    size = 50.0  # Tamaño del cubo del cielo, basado en el tamaño del piso
+    # Establecer el color blanco para el pasillo
+    glColor3f(1.0, 1.0, 1.0)
+    
+    # Posicionar el pasillo en la cajuela del camión
+    glTranslatef(20.0, 5.0, -23.0)  # (x, y, z)
+    
+    # Definir las dimensiones del pasillo
+    corridor_length_start_z = 10.0    # Inicio del pasillo desde la cajuela
+    corridor_length_end_z = 65.0     # Extensión del pasillo a lo largo del eje Z
+    corridor_x_left = 10.0            # Posición X de la pared izquierda
+    corridor_x_right = -10.0          # Posición X de la pared derecha
+    
+    glDisable(GL_CULL_FACE)  # Deshabilitar face culling para ambas caras
+    
+    glBegin(GL_QUADS)
+    
+    # --- Superficie del pasillo (cara superior) ---
+    glColor3f(1.0, 1.0, 1.0)  # Color blanco
+    glVertex3f(corridor_x_left, -4.99, corridor_length_start_z)  # Esquina superior izquierda
+    glVertex3f(corridor_x_right, -4.99, corridor_length_start_z)  # Esquina superior derecha
+    glVertex3f(corridor_x_right, -4.99, corridor_length_end_z)  # Esquina inferior derecha
+    glVertex3f(corridor_x_left, -4.99, corridor_length_end_z)  # Esquina inferior izquierda
+    
+    # --- Parte inferior del pasillo (cara inferior) ---
+    glColor3f(1.0, 1.0, 1.0)  # Color blanco
+    glVertex3f(corridor_x_left, -5.01, corridor_length_start_z)  # Esquina superior izquierda
+    glVertex3f(corridor_x_right, -5.01, corridor_length_start_z)  # Esquina superior derecha
+    glVertex3f(corridor_x_right, -5.01, corridor_length_end_z)  # Esquina inferior derecha
+    glVertex3f(corridor_x_left, -5.01, corridor_length_end_z)  # Esquina inferior izquierda
+    
+    glEnd()
+    
+    glEnable(GL_CULL_FACE)  # Rehabilitar face culling
+    
+    glPopMatrix()
 
-    # Dibujar las caras internas del cubo
+def draw_skybox(texture_id):
+    glPushMatrix()
+
+    # Activar la textura y enlazarla
+    glEnable(GL_TEXTURE_2D)
+    glBindTexture(GL_TEXTURE_2D, texture_id)
+
+    # Establecer el color a blanco para que no altere la textura
+    glColor3f(1.0, 1.0, 1.0)
+
+    # Desactivar face culling para renderizar las caras internas
+    glDisable(GL_CULL_FACE)
+
+    size = 50.0  # Tamaño del cubo del cielo
+
     glBegin(GL_QUADS)
 
-    # Cara frontal
+    # **Cara Frontal (Mirando hacia dentro, Z negativo)**
+    glTexCoord2f(0.0, 0.0)
     glVertex3f(-size, size, -size)
+    glTexCoord2f(1.0, 0.0)
     glVertex3f(size, size, -size)
+    glTexCoord2f(1.0, 1.0)
     glVertex3f(size, -size, -size)
+    glTexCoord2f(0.0, 1.0)
     glVertex3f(-size, -size, -size)
 
-    # Cara trasera
-    glVertex3f(-size, size, size)
+    # **Cara Trasera (Mirando hacia dentro, Z positivo)**
+    glTexCoord2f(0.0, 0.0)
     glVertex3f(size, size, size)
+    glTexCoord2f(1.0, 0.0)
+    glVertex3f(-size, size, size)
+    glTexCoord2f(1.0, 1.0)
+    glVertex3f(-size, -size, size)
+    glTexCoord2f(0.0, 1.0)
     glVertex3f(size, -size, size)
+
+    # **Cara Izquierda (Mirando hacia dentro, X negativo)**
+    glTexCoord2f(0.0, 0.0)
+    glVertex3f(-size, size, size)
+    glTexCoord2f(1.0, 0.0)
+    glVertex3f(-size, size, -size)
+    glTexCoord2f(1.0, 1.0)
+    glVertex3f(-size, -size, -size)
+    glTexCoord2f(0.0, 1.0)
     glVertex3f(-size, -size, size)
 
-    # Cara izquierda
-    glVertex3f(-size, size, size)
-    glVertex3f(-size, size, -size)
-    glVertex3f(-size, -size, -size)
-    glVertex3f(-size, -size, size)
-
-    # Cara derecha
-    glVertex3f(size, size, size)
+    # **Cara Derecha (Mirando hacia dentro, X positivo)**
+    glTexCoord2f(0.0, 0.0)
     glVertex3f(size, size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(size, -size, size)
-
-    # Cara superior
-    glVertex3f(-size, size, -size)
-    glVertex3f(size, size, -size)
+    glTexCoord2f(1.0, 0.0)
     glVertex3f(size, size, size)
-    glVertex3f(-size, size, size)
-
-    # Cara inferior (opcional para el cielo, usualmente no visible)
-    glVertex3f(-size, -size, -size)
-    glVertex3f(size, -size, -size)
+    glTexCoord2f(1.0, 1.0)
     glVertex3f(size, -size, size)
+    glTexCoord2f(0.0, 1.0)
+    glVertex3f(size, -size, -size)
+
+    # **Cara Superior (Mirando hacia dentro, Y positivo)**
+    glTexCoord2f(0.0, 0.0)
+    glVertex3f(-size, size, size)
+    glTexCoord2f(1.0, 0.0)
+    glVertex3f(size, size, size)
+    glTexCoord2f(1.0, 1.0)
+    glVertex3f(size, size, -size)
+    glTexCoord2f(0.0, 1.0)
+    glVertex3f(-size, size, -size)
+
+    # **Cara Inferior (Mirando hacia dentro, Y negativo)**
+    glTexCoord2f(0.0, 0.0)
+    glVertex3f(-size, -size, -size)
+    glTexCoord2f(1.0, 0.0)
+    glVertex3f(size, -size, -size)
+    glTexCoord2f(1.0, 1.0)
+    glVertex3f(size, -size, size)
+    glTexCoord2f(0.0, 1.0)
     glVertex3f(-size, -size, size)
 
     glEnd()
 
-    glEnable(GL_DEPTH_TEST)  # Restaurar el test de profundidad
+    # Rehabilitar face culling si estaba habilitado previamente
+    glEnable(GL_CULL_FACE)
+
+    # Desactivar la textura
+    glBindTexture(GL_TEXTURE_2D, 0)
+    glDisable(GL_TEXTURE_2D)
+
     glPopMatrix()
-    
+
+
 def draw_cajuela():
     glPushMatrix()
+    
+    # Posicionar y escalar la cajuela
     glTranslatef(20.0, 6.0, -23.0)
-    glScale(1.0, 0.99, 2.0)
-
+    glScale(1.0, 0.80, 2.0)
+    
     # Habilitar el test de profundidad
     glEnable(GL_DEPTH_TEST)
-
+    
+    # Deshabilitar face culling para renderizar ambas caras
+    glDisable(GL_CULL_FACE)
+    
     size = 6.0  # Tamaño del cubo
-
+    ramp_length = 7.0 
+    
     # Dibujar las caras del cubo
-
+    
     # Cara frontal (gris)
     glColor3f(0.5, 0.5, 0.5)
     glBegin(GL_QUADS)
@@ -236,7 +379,7 @@ def draw_cajuela():
     glVertex3f(size, -size, -size)
     glVertex3f(-size, -size, -size)
     glEnd()
-
+    
     # Cara izquierda (gris)
     glBegin(GL_QUADS)
     glVertex3f(-size, size, size)
@@ -244,7 +387,7 @@ def draw_cajuela():
     glVertex3f(-size, -size, -size)
     glVertex3f(-size, -size, size)
     glEnd()
-
+    
     # Cara derecha (gris)
     glBegin(GL_QUADS)
     glVertex3f(size, size, size)
@@ -260,16 +403,16 @@ def draw_cajuela():
     glVertex3f(size, size, size)
     glVertex3f(-size, size, size)
     glEnd()
-
+    
     # Cara inferior (rojo oscuro)
-    glColor3f(109/255, 17/255, 10/255)
+    glColor3f(109/255, 17/255, 10/255)  # Color rojo oscuro
     glBegin(GL_QUADS)
     glVertex3f(-size, -size, -size)
     glVertex3f(size, -size, -size)
     glVertex3f(size, -size, size)
     glVertex3f(-size, -size, size)
     glEnd()
-
+    
     # Dibujar las aristas del cubo en color negro
     glColor3f(0.0, 0.0, 0.0) 
     glLineWidth(1.0) 
@@ -313,11 +456,21 @@ def draw_cajuela():
 
     glVertex3f(-size, -size, -size)
     glVertex3f(-size, -size, size)
-
+    
     glEnd()
-
+    
+    # Dibujar la rampa (trasera, inclinada hacia abajo)
+    glColor3f(109/255, 17/255, 10/255)  # Color gris para la rampa
+    glBegin(GL_TRIANGLES)
+    glVertex3f(-size, -size, size)  # Esquina inferior izquierda trasera de la cajuela
+    glVertex3f(size, -size, size)   # Esquina inferior derecha trasera de la cajuela
+    glVertex3f(0.0, -size - 1.0, size + ramp_length)   # Vértice inferior extendido (más largo)
+    glEnd()
+    
+    # Rehabilitar face culling
+    glEnable(GL_CULL_FACE)
+    
     glPopMatrix()
-
     
 # Función para cargar texturas
 def load_texture(texture_path):
@@ -462,12 +615,17 @@ def main():
     glEnable(GL_TEXTURE_2D)
 
     # Load textures and models
-    floor_texture = load_texture("floor.jpg")
+    floor_texture = load_texture("piso.jpg")
+    background_texture = load_texture("back.png")  # Carga la textura de fondo
     camera = Camera()
     objetos.append(OBJ("forklift.obj", swapyz=True))
     objetos[0].generate()
     objetos2.append(OBJ("truck.obj", swapyz=True))
     objetos2[0].generate()
+    objetos3.append(OBJ("Catering_Truck.obj", swapyz= True))
+    objetos3[0].generate()
+    objetos3_2.append(OBJ("Catering_Truck.obj", swapyz= True))
+    objetos3_2[0].generate()
 
     # Generate boxes
     num_cajas = 50
@@ -478,8 +636,8 @@ def main():
     ]
 
     # Initialize simulation and get robot id
-    robot_id, forklift_position_x, forklift_position_y, forklift_position_z, robots = initialize_simulation()
-    if robot_id is None:
+    simulation_id, forklift_position_x, forklift_position_y, forklift_position_z, robots = initialize_simulation()
+    if simulation_id is None:
         print("Failed to initialize simulation.")
         return
 
@@ -525,7 +683,7 @@ def main():
         # Periodically update the robot's position
         current_time = time.time()
         if current_time - last_position_fetch_time > position_update_interval:
-            robot_x, robot_y, robot_z = get_robot_position(1)  # Assuming robot_id = 1
+            robot_x, robot_y, robot_z = get_robot_position(simulation_id)  # Usar simulation_id correcto
             if robot_x is not None and robot_y is not None and robot_z is not None:
                 forklift_position_x, forklift_position_y, forklift_position_z = robot_x, robot_y, robot_z
             last_position_fetch_time = current_time  # Update the time of last position fetch
@@ -544,11 +702,15 @@ def main():
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         draw_axes()
         draw_floor(floor_texture)
-        draw_skybox()
+        draw_skybox(background_texture)
 
         # Render objects and forklift/robot
         displayobj()  # Forklift
         displayobj2()  # Truck
+        displayobj3()  # Truck
+        displayobj4()
+        # Dibujar el pasillo recto
+        draw_corridor_path()
         draw_cajuela()
 
         # Render boxes
