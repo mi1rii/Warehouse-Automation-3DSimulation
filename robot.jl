@@ -1,5 +1,7 @@
 module ModuloRobot
 
+include("caja.jl")
+
 export Robot, crearRobot, mover_robot!, to_dict
 
 mutable struct Robot
@@ -63,66 +65,49 @@ function ha_llegado_objetivo(robot::Robot)
     return distancia < 0.5  # Increased threshold slightly
 end
 
-function mover_robot!(robot::Robot, tiempo::Float64, angulo::Float64)
-    if robot.estado == :idle
-        if time() - robot.last_target_time > 2.0
-            generar_nuevo_objetivo!(robot)
-        end
-        return
+function mover_robot!(robot::Robot, tiempo::Float64, target_pos::Vector{Float64})
+    dx = target_pos[1] - robot.x
+    dy = target_pos[2] - robot.y
+    distancia = sqrt(dx^2 + dy^2)
+
+    if distancia > 0.5  # Movement threshold
+        # Normalize movement direction
+        step = robot.velocidad * tiempo
+        direction = [dx, dy] ./ distancia
+        robot.x += step * direction[1]
+        robot.y += step * direction[2]
+    else
+        # Target reached
+        println("Robot reached position: $target_pos")
+        robot.estado = :idle
     end
 
-    if robot.estado == :moving
-        dx = robot.target_x - robot.x
-        dy = robot.target_y - robot.y
-        distancia = sqrt(dx^2 + dy^2)
-        
-        # Check if we've reached the target with a slightly larger threshold
-        if distancia < 0.5
-            # Snap to exact position when very close
-            robot.x = robot.target_x
-            robot.y = robot.target_y
-            robot.estado = :idle
-            robot.last_target_time = time()
-            println("Target reached: x=$(robot.x), y=$(robot.y)")
-            return
-        end
-        
-        # Calculate movement with smoothing
-        velocidad_actual = min(robot.velocidad * tiempo, distancia)  # Don't overshoot
-        
-        # Normalize direction and apply velocity
-        if distancia > 0
-            # Calculate movement vector
-            move_x = (dx / distancia) * velocidad_actual
-            move_y = (dy / distancia) * velocidad_actual
-            
-            # Apply movement
-            robot.x += move_x
-            robot.y += move_y
-            
-            # Update angle smoothly
-            target_angle = atan(dy, dx)
-            angle_diff = target_angle - robot.angulo
-            
-            # Normalize angle difference to [-π, π]
-            while angle_diff > π
-                angle_diff -= 2π
-            end
-            while angle_diff < -π
-                angle_diff += 2π
-            end
-            
-            # Smooth angle update
-            robot.angulo += angle_diff * min(1.0, tiempo * 5.0)
-        end
-        
-        # Boundary checking
-        max_bound = 45.0
-        robot.x = clamp(robot.x, -max_bound, max_bound)
-        robot.y = clamp(robot.y, -max_bound, max_bound)
-    end
-    println("Sending position: x=$(robot.x), y=$(robot.y)")
+    println("Robot State: ", robot.estado)
+    println("Robot Position: x=$(robot.x), y=$(robot.y), z=$(robot.z)")
+
 end
+
+function execute_task!(robot::Robot, cajas::Vector{ModuloCaja.Caja})
+    if robot.estado == :idle && !isempty(cajas)
+        target_caja = popfirst!(cajas)  # Get the next box
+        robot.target_x, robot.target_y = target_caja.posicion[1], target_caja.posicion[2]
+        robot.estado = :moving_to_box
+    elseif robot.estado == :moving_to_box
+        mover_robot!(robot, 1.0 / 60.0, [robot.target_x, robot.target_y])  # 60 FPS assumption
+        if ha_llegado_objetivo(robot)
+            println("Picking up box...")
+            robot.estado = :moving_to_dropoff
+        end
+    elseif robot.estado == :moving_to_dropoff
+        dropoff_position = [0.0, 0.0]  # Define drop-off position
+        mover_robot!(robot, 1.0 / 60.0, dropoff_position)
+        if ha_llegado_objetivo(robot)
+            println("Box dropped off!")
+            robot.estado = :idle
+        end
+    end
+end
+
 
 # Optional: Add functions for more complex behaviors
 function iniciar_recogida!(robot::Robot)
