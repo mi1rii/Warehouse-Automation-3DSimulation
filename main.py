@@ -6,9 +6,12 @@ import numpy as np
 import math
 import random
 import time  # Importar para manejar tiempos
+import requests
+import json
 
+from renderer import *
 from caja import *
-from robot import *
+from robot import Robot
 from OpenGL.GL import *
 from OpenGL.GLU import *
 from opmat import OpMat
@@ -23,6 +26,14 @@ screen_height = 700
 
 dimBoard = 500.0  # Tamaño del área del piso donde se colocarán las cajas
 margin = 10.0
+
+# Definir parámetros de proyección ortográfica para 2D
+ORTHO_LEFT = -dimBoard
+ORTHO_RIGHT = dimBoard
+ORTHO_BOTTOM = -dimBoard
+ORTHO_TOP = dimBoard
+ORTHO_NEAR = -1.0
+ORTHO_FAR = 1.0
 
 # Desplazamiento del área de aparición de las cajas
 area_offset_x = 400.0  # Ajustado para posicionar el robot dentro del rectángulo
@@ -52,6 +63,8 @@ Y_MAX = 1000
 Z_MIN = -1000
 Z_MAX = 1000
 
+STACK_TOLERANCE = 1
+
 # Dimensiones del contenedor
 contenedor_ancho = 320.0
 contenedor_altura = 220.0
@@ -71,39 +84,50 @@ drop_position = [rectangulo_posicion[0] - rectangulo_ancho / 2, 0.0, rectangulo_
 ""
 
 class SimulationState:
+    """Clase para gestionar el estado de la simulación."""
     def __init__(self):
+        self.simulation_id = None
+        self.robots_state = []
         self.packages_state = []
-        self.robots = []
-        self.empaquetado_iniciado = False  # Indica si ya se inició el proceso de empaquetado
+        self.api_url = "http://localhost:8000"
 
-        # Coordenadas de las orillas de la pasarela
-        """PASAR A JULIA"""
-        self.pasarela = {
-            'left': rectangulo_posicion[0] - rectangulo_ancho / 2,
-            'right': rectangulo_posicion[0] + rectangulo_ancho / 2,
-            'top': rectangulo_posicion[2] + rectangulo_profundidad / 2,
-            'bottom': rectangulo_posicion[2] - rectangulo_profundidad / 2
-        }
-        # Definir las esquinas (waypoints) en sentido horario
-        self.waypoints = [
-            [self.pasarela['left'], 0.0, self.pasarela['bottom']],  # Esquina 1
-            [self.pasarela['right'], 0.0, self.pasarela['bottom']],  # Esquina 2
-            [self.pasarela['right'], 0.0, self.pasarela['top']],     # Esquina 3
-            [self.pasarela['left'], 0.0, self.pasarela['top']],      # Esquina 4
-        ]
-        ""
+    def initialize_simulation(self, num_robots=3, num_packages=15):
+        """Inicializa una nueva simulación con robots y cajas."""
+        response = requests.post(
+            f"{self.api_url}/simulation",
+            json={"num_robots": num_robots, "num_packages": num_packages}
+        )
+        data = response.json()
+        self.simulation_id = data["id"]
+        self.robots_state = data["robots"]
+        self.packages_state = data["packages"]
 
-        # Crear tres robots
-        self.num_robots = 3  # Número de robots
-        for i in range(self.num_robots):
-            robot = Robot(robot_id=i+1)
-            self.robots.append(robot)
-
-        """JULIA"""
-        # Actualizar la posición inicial de los robots a la esquina 1
-        for robot in self.robots:
-            robot.position = self.waypoints[0].copy()
-        ""
+        if len(self.robots_state) < num_robots:
+            print(f"Warning: Expected {num_robots} robots, but only {len(self.robots_state)} were initialized.")
+  
+    def update(self):
+        """Actualiza el estado de la simulación consultando la API."""
+        if not self.simulation_id:
+            raise ValueError("Simulation ID not set. Make sure to initialize the simulation first.")
+      
+        response = requests.post(f"{self.api_url}/simulation/{self.simulation_id}")
+      
+        print("Response content:", response.content)  # Debug: check raw response content
+      
+        try:
+            data = response.json()
+            self.robots_state = data["robots"]
+            self.packages_state = data["packages"]
+        except json.JSONDecodeError:
+            print("Failed to parse JSON. Response content:", response.content)
+            data = None
+  
+        return data
+  
+    def cleanup(self):
+        """Limpia la simulación eliminándola de la API."""
+        if self.simulation_id:
+            requests.delete(f"{self.api_url}/simulation/{self.simulation_id}")
 
 
     """JULIA"""
@@ -286,13 +310,76 @@ class SimulationState:
         return path
     
 def Init(simulation):
-    """Inicializa la simulación."""
+    """Inicializa la ventana de Pygame y configura OpenGL."""
+    screen = pygame.display.set_mode(
+        (screen_width, screen_height), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("OpenGL: Robots")
+
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    # Configurar proyección ortográfica para 2D
+    gluOrtho2D(ORTHO_LEFT, ORTHO_RIGHT, ORTHO_BOTTOM, ORTHO_TOP)
+
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()  # Cargar la identidad para 2D
+    
+    glClearColor(0, 0, 0, 0)  # Color de fondo negro
+    glDisable(GL_DEPTH_TEST)  # Deshabilitar test de profundidad para 2D
+    glEnable(GL_BLEND) 
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) 
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)  # Modo de polígono relleno
+
+    # Configurar tamaño de los puntos para visibilidad
+    glPointSize(2.0)  # Puedes ajustar este valor según tus necesidades
+
     renderer.init_gl()
     simulation.initialize_simulation()
 
 def display(simulation):
     """Renderiza la escena de la simulación."""
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)  # Limpiar buffers
     renderer.render_scene(simulation)
+    simulation.update()  # Actualizar estado de la simulación
+
+    # # Dibujar todos los robots
+    # for robot_state in simulation.robots_state:
+    #     dibujar_robot(robot_state)
+        
+    # Agrupar cajas en pilas según la tolerancia
+    stacks = {}
+    for package in simulation.packages_state:
+        pos = package["position"]
+        if len(pos) >= 2:
+            x, y = pos[0], pos[1]
+        else:
+            print("Posición inválida:", pos)
+            continue
+        # Redondear posiciones para agrupar en pilas
+        stack_key = (round(x / STACK_TOLERANCE) * STACK_TOLERANCE,
+                    round(y / STACK_TOLERANCE) * STACK_TOLERANCE)
+        if stack_key not in stacks:
+            stacks[stack_key] = []
+        stacks[stack_key].append(package)
+
+    # Determinar el estado de cada pila
+    stack_colors = {}
+    for key, packages in stacks.items():
+        if len(packages) >= 5:
+            stack_colors[key] = (1.0, 0.0, 0.0)  # Rojo para pilas llenas
+        elif len(packages) > 0:
+            stack_colors[key] = (0.0, 1.0, 0.0)  # Verde para pilas disponibles
+
+    # Dibujar cajas con color basado en el estado de la pila
+    for key, packages in stacks.items():
+        is_full_stack = len(packages) >= 5
+        for package in packages:
+            if is_full_stack:
+                # Dibujar pilas llenas en rojo
+                dibujar_caja(package, color_override=(1.0, 0.0, 0.0))  # Rojo
+            else:
+                # Dibujar pilas disponibles en verde
+                dibujar_caja(package, color_override=(0.0, 1.0, 0.0))  # Verde
+
 
 def main():
     """Función principal que ejecuta la simulación."""
@@ -307,7 +394,7 @@ def main():
     tiempo_inicio = pygame.time.get_ticks()
     tiempo_espera = 2000  # Esperar 2 segundos antes de iniciar el movimiento
 
-    simulation.empaquetado_inicio = tiempo_inicio + tiempo_espera  # Tiempo en que inicia el empaquetado
+    simulation.empaquetado_iniciado = tiempo_inicio + tiempo_espera  # Tiempo en que inicia el empaquetado
 
     try:
         while not done:
@@ -321,7 +408,7 @@ def main():
                 simulation.empaquetar_cajas((contenedor_ancho, contenedor_altura, contenedor_profundidad))
                 simulation.empaquetado_iniciado = True
 
-            simulation.update(current_time)  # Actualizar estado de la simulación
+            simulation.update()  # Actualizar estado de la simulación
             display(simulation)  # Renderizar la simulación
             pygame.display.flip()  # Actualizar la pantalla
             clock.tick(60)  # Limitar a 60 FPS

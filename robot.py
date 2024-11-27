@@ -1,13 +1,14 @@
 """TODO A JULIA"""
-from main import(
-    rectangulo_ancho,
-    rectangulo_posicion,
-    rectangulo_profundidad,
-    drop_position
-)
-
+import numpy as np
 class Robot:
     def __init__(self, robot_id):
+        from main import (
+            rectangulo_ancho,
+            rectangulo_posicion,
+            rectangulo_profundidad,
+            drop_position
+        )
+
         # Identificador del robot
         self.id = robot_id
         # La posición inicial será la esquina 1: [left, bottom]
@@ -26,7 +27,7 @@ class Robot:
     def update_robot(self, robot, current_time):
             # Inicializar el tiempo de inicio del robot
             if robot.start_time is None:
-                robot.start_time = self.empaquetado_inicio + (robot.id - 1) * 5000  # 5000 ms = 5 segundos
+                robot.start_time = self.empaquetado_iniciado + (robot.id - 1) * 5000  # 5000 ms = 5 segundos
 
             # Esperar hasta que hayan pasado 5 segundos desde el inicio del robot anterior
             if current_time < robot.start_time:

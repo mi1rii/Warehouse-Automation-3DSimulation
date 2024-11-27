@@ -4,6 +4,10 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import numpy as np
 from opmat import OpMat
+from robot import *
+from caja import *
+from main import *
+from linea_bresenham import *
 
 # Importar constantes necesarias
 from main import (
@@ -104,21 +108,66 @@ def draw_walkway():
     draw_cube(rectangulo_ancho, 1.0, rectangulo_profundidad)
     glPopMatrix()
 
-def draw_box(package_state, color_override=None):
-    """Dibuja una caja."""
-    glPushMatrix()
-    pos = package_state["position"]
-    dim = package_state["dimensions"]
-    glTranslatef(pos[0], pos[1], pos[2])
-    glRotatef(package_state["angle"] * 180.0 / np.pi, 0, 1, 0)
+
+
+
+
+def dibujar_caja(package_state, color_override=None):
+    opmat = OpMat()
+    opmat.push()
+    posicion = package_state["position"]
+    angulo = package_state["angle"]
     
-    if color_override:
-        color = color_override
+    if len(posicion) == 2:
+        x, y = posicion
+        z = 0.0
+    elif len(posicion) == 3:
+        x, y, z = posicion
     else:
-        color = (1.0, 1.0, 1.0)
+        raise ValueError("La posición debe tener 2 o 3 elementos.")
     
-    draw_cube(dim[0], dim[1], dim[2], color)
-    glPopMatrix()
+    opmat.translate(x, y, z)
+    opmat.rotate(np.degrees(angulo), 0, 0, 1)
+    opmat.scale(0.2, 0.2, 1.0)  # Escalar en X e Y solo
+    dibujar_caja_body(opmat, color_override)
+    opmat.pop()
+
+def dibujar_caja_body(opmat, color_override=None):
+    """Dibuja el contorno de una caja como un rectángulo 2D utilizando Bresenham."""
+    # Definir los vértices de la caja (un rectángulo) con coordenadas homogéneas
+    vertices = [
+        (-10, -10, 0, 1),  # Agregar 1 como coordenada homogénea
+        (10, -10, 0, 1),
+        (10, 10, 0, 1),
+        (-10, 10, 0, 1)
+    ]
+
+    # Transformar las coordenadas usando OpMat
+    transformed_vertices = opmat.mult_Points(vertices) 
+
+    # Definir las aristas de la caja
+    edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0)
+    ]
+
+    # Establecer el color de la caja
+    if color_override:
+        glColor3f(*color_override)
+    else:
+        glColor3f(187/255, 156/255, 110/255)  # Color por defecto de las cajas
+
+    # Dibujar cada arista usando Bresenham
+    for edge in edges:
+        start = transformed_vertices[edge[0]]
+        end = transformed_vertices[edge[1]]
+        LineaBresenham3D(start[0], start[1], 0, end[0], end[1], 0)  # Dibujar línea usando Bresenham
+
+
+
+
 
 def draw_container():
     """Dibuja el contenedor."""
@@ -149,16 +198,12 @@ def render_scene(simulation):
     # Dibujar cajas
     for package in simulation.packages_state:
         if package["state"] == "on_floor":
-            draw_box(package, color_override=(0.73, 0.61, 0.43))
+            dibujar_caja(package, color_override=(0.73, 0.61, 0.43))
         elif package["state"] == "carried_by_robot":
             assigned_robot = next((r for r in simulation.robots if r.id == package.get("assigned_robot_id")), None)
             if assigned_robot:
                 package["position"] = [assigned_robot.position[0], 0.0, assigned_robot.position[2]]
                 package["angle"] = assigned_robot.angle
-                draw_box(package, color_override=(1.0, 1.0, 0.0))
+                dibujar_caja(package, color_override=(1.0, 1.0, 0.0))
         elif package["state"] == "in_container":
-            draw_box(package, color_override=(0.0, 1.0, 0.0))
-
-    # Dibujar robots
-    for robot in simulation.robots:
-        draw_robot(robot) 
+            dibujar_caja(package, color_override=(0.0, 1.0, 0.0))
