@@ -1,3 +1,4 @@
+
 include("robot.jl")
 
 using .ModuloRobot  # Cambiar a importación relativa
@@ -20,32 +21,26 @@ route("/simulation", method = POST) do
     ))
 end
 
-route("/boxes", method = POST) do
-    global cajas  # Global state for boxes
-    box_data = jsonpayload()["boxes"]
-
-    # Parse incoming box positions
-    cajas = [ModuloCaja.Caja(box["position"], 0.0, "esperando") for box in box_data]
-
-    return json(Dict("status" => "Box positions received"))
-end
-
+# Update simulation
 route("/simulation/:id", method = POST) do
     id = payload(:id)
-    println("Received update request for Simulation ID: ", id)
+    println("Received request to update simulation with id: ", id)
 
     if !haskey(robots, id)
-        println("Simulation ID not found: ", id)
         status(404)
         return json(Dict("error" => "Simulation not found"))
     end
 
-    # Update robots based on tasks or movements
+    velocidad = try parse(Float64, jsonpayload()["velocidad"]) catch e 1.0 end
+    tiempo = try parse(Float64, jsonpayload()["tiempo"]) catch e 1.0 end
+
     for robot in robots[id]
-        execute_task!(robot, cajas)  # Ensure this function updates robot.x, y, z
+        ModuloRobot.mover_robot!(robot, velocidad * tiempo, robot.angulo)
     end
 
-    return json(Dict("robots" => [ModuloRobot.to_dict(robot) for robot in robots[id]]))
+    # Update and return the new state
+    updated_robots = [ModuloRobot.to_dict(robot) for robot in robots[id]]
+    return json(Dict("robots" => updated_robots))
 end
 
 # Delete simulation

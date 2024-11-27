@@ -1,3 +1,4 @@
+
 # main.py
 import pygame
 from pygame.locals import *
@@ -8,14 +9,6 @@ import random
 import numpy as np
 import requests
 import time
-import requests
-from decimal import Decimal
-import math
-import random
-
-import py3dbp
-
-from py3dbp import Bin, Item, Packer
 
 from Caja import Caja
 
@@ -50,33 +43,23 @@ objetos3 = []
 objetos3_2 = []
 
 # CONNECTION
+# Function to get the robot's position from the server
 def get_robot_position(simulation_id, robot_index=0):
+    """Get robot position from the simulation"""
     try:
-        response = requests.get(f"{API_BASE_URL}/simulation/{simulation_id}")
+        # Make a GET request to fetch the current state of the simulation
+        response = requests.post(f"{API_BASE_URL}/simulation/{simulation_id}")
         response.raise_for_status()
         data = response.json()
-
-        robots = data.get("robots", [])
-        if robot_index < len(robots):
-            robot = robots[robot_index]
-            return robot["position"][0], robot["position"][1], robot["position"][2]
-        else:
-            print(f"Robot index {robot_index} out of range")
-            return None, None, None
+        
+        # Get the robot data from the response
+        if "robots" in data and len(data["robots"]) > robot_index:
+            robot = data["robots"][robot_index]
+            return robot["x"], robot["y"], robot["z"]
+        return None, None, None
     except requests.RequestException as e:
         print(f"Error getting robot position: {e}")
         return None, None, None
-
-def convert_decimal(obj):
-    """Recursively convert Decimal to float for JSON serialization."""
-    if isinstance(obj, Decimal):
-        return float(obj)  # Convert Decimal to float
-    elif isinstance(obj, dict):
-        return {k: convert_decimal(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_decimal(v) for v in obj]
-    else:
-        return obj  # Return other types unchanged
 
 # Clase para manejar la cámara
 class Camera:
@@ -127,6 +110,7 @@ def displayobj():
     objetos[0].render()  # Render the first object in the 'objetos' list
     
     glPopMatrix()
+
     
 def displayobj2():
     glPushMatrix()  
@@ -158,22 +142,86 @@ def displayobj4():
     objetos3_2[0].render()  
     glPopMatrix()
 
-def initialize_boxes(num_cajas, container_dimensions):
-    """
-    Initialize boxes using the 3dbinpacking algorithm.
-    """
-    # Get packed box positions
-    packed_boxes = empaquetar_cajas(num_cajas, container_dimensions)
+def generate_box_positions(num_cajas):
+    colors = [
+        (198/255, 154/255, 101/255),  # Rojo
+        (198/255, 154/255, 101/255),  # Verde
+        (198/255, 154/255, 101/255),  # Azul
+        (198/255, 154/255, 101/255),  # Amarillo
+        (198/255, 154/255, 101/255),  # Magenta
+    ]
 
-    # Generate `Caja` objects for visualization
-    cajas = []
-    for box in packed_boxes:
-        x, y, z = box["position"]
-        dimensions = box["dimensions"]
-        color = (198/255, 154/255, 101/255)  # Default box color
-        cajas.append(Caja(dimensions, color, (x, y, z)))
+    dimensions_list = [
+        (3.0, 3.0, 3.0), 
+        (4.2, 4.2, 4.2), 
+        (0.6, 0.6, 0.6)
+    ]
+       
+    # Definir las paredes del pasillo vertical
+    corridor_x_left = 10.0
+    corridor_x_right = 30.0
+    
+    corridor_length_start_z = 0.0    # Inicio del pasillo desde la cajuela
+    corridor_length_end_z = 35.0     # Extensión del pasillo a lo largo del eje Z
+    
+    path_width = 20.0                  # Ancho total del pasillo
 
-    return cajas, packed_boxes
+    box_positions = []
+    min_distance = 4  # Distancia mínima entre cajas
+    
+    contour_lines = [
+        ('left_wall', corridor_length_start_z, corridor_length_end_z, corridor_x_left, 'z'),
+        ('right_wall', corridor_length_start_z, corridor_length_end_z, corridor_x_right, 'z')
+    ]
+
+    # Calcular la longitud total del contorno (dos paredes)
+    total_length = 2 * (corridor_length_end_z - corridor_length_start_z)  # 100 * 2 = 200
+
+    # Proporción de cajas en cada pared (igual para ambas)
+    fraction_per_wall = 1.0  # Todas las cajas se distribuyen en ambas paredes
+
+    num_per_wall = num_cajas // 2
+    remainder = num_cajas % 2
+
+    # Calcular el espaciado entre cajas en cada pared
+    spacing_per_wall = (corridor_length_end_z - corridor_length_start_z) / (num_per_wall - 1) if num_per_wall > 1 else 0
+
+    # Función para agregar una caja si no hay colisión
+    def add_box(x, z, dimensions, color):
+        y = dimensions[1] / 2.0  # Centrar la caja sobre el piso
+        # Verificar colisión con cajas existentes (solo en el plano XZ)
+        for pos in box_positions:
+            existing_x, existing_y, existing_z, _, _ = pos
+            distance = math.sqrt((x - existing_x)**2 + (z - existing_z)**2)
+            if distance < min_distance:
+                return  # Colisión detectada, no agregar la caja
+        box_positions.append((x, y, z, dimensions, color))
+
+# Colocar cajas en la pared izquierda
+    for i in range(num_per_wall):
+        z = corridor_length_start_z + i * spacing_per_wall if num_per_wall > 1 else (corridor_length_start_z + corridor_length_end_z) / 2
+        x = corridor_x_left
+        dimensions = random.choice(dimensions_list)
+        color = random.choice(colors)
+        add_box(x, z, dimensions, color)
+
+    # Colocar cajas en la pared derecha
+    for i in range(num_per_wall):
+        z = corridor_length_start_z + i * spacing_per_wall if num_per_wall > 1 else (corridor_length_start_z + corridor_length_end_z) / 2
+        x = corridor_x_right
+        dimensions = random.choice(dimensions_list)
+        color = random.choice(colors)
+        add_box(x, z, dimensions, color)
+
+    # Si hay una caja adicional, asignarla a una de las paredes (por ejemplo, izquierda)
+    if remainder:
+        z = (corridor_length_start_z + corridor_length_end_z) / 2
+        x = corridor_x_left
+        dimensions = random.choice(dimensions_list)
+        color = random.choice(colors)
+        add_box(x, z, dimensions, color)
+
+    return box_positions
 
 # Función para dibujar un cielo en forma de cubo
 
@@ -512,69 +560,24 @@ def handle_keys(camera, keys):
         camera.angle_h -= 1.0
     if keys[pygame.K_d]:
         camera.angle_h += 1.0
-
-def empaquetar_cajas(num_cajas, container_dimensions):
-    """
-    Use the 3dbinpacking library to calculate box positions in the container.
-    """
-    packer = Packer()
-    container_name = "truck_container"
-
-    # Set max_weight to a large numeric value instead of infinity
-    bin1 = Bin(container_name, *container_dimensions, max_weight=10000.0)  # Replace inf with 10000.0
-    packer.add_bin(bin1)
-
-    dimensions_list = [
-        (3.0, 3.0, 3.0), 
-        (4.2, 4.2, 4.2), 
-        (0.6, 0.6, 0.6)
-    ]
-
-    # Create boxes
-    for i in range(num_cajas):
-        dims = random.choice(dimensions_list)
-        item = Item(f"box_{i}", *dims, weight=1.0)
-        packer.add_item(item)
-
-    for dims in dimensions_list:
-        if any(dim <= 0 for dim in dims):
-            raise ValueError("Item dimensions must be positive and non-zero.")
-    
-    # Perform packing
-    packer.pack()
-
-    packed_boxes = []
-    for b in packer.bins:
-        for item in b.items:
-            x, y, z = item.position
-            dims = (item.width, item.height, item.depth)
-            packed_boxes.append({"position": [x, y, z], "dimensions": dims})
-            
-    packed_boxes.append({
-        "position": [float(x), float(y), float(z)],  # Ensure positions are floats
-        "dimensions": [float(dim) for dim in dims]  # Ensure dimensions are floats
-    })
-
-    return packed_boxes
         
 def initialize_simulation():
+    """Initialize the simulation and get the simulation ID"""
     try:
-        response = requests.post(f"{API_BASE_URL}/simulation", json={"num_robots": 5})
+        response = requests.post(f"{API_BASE_URL}/simulation", json={"num_robots": 1})
         response.raise_for_status()
         data = response.json()
-
-        simulation_id = data.get("id")
-        if not simulation_id:
-            raise ValueError("Simulation ID not returned from server")
-
-        robots = data.get("robots", [])
-        print(f"Simulation ID: {simulation_id}")
-        print(f"Robots initialized: {robots}")
-
-        return simulation_id, robots
+        simulation_id = data["id"]
+        
+        # Get initial position
+        x, y, z = get_robot_position(simulation_id)
+        if x is None:
+            x, y, z = 0.0, 0.0, 0.0
+            
+        return simulation_id, x, y, z, data.get("robots", [])
     except requests.RequestException as e:
         print(f"Error initializing simulation: {e}")
-        return None, []
+        return None, 0.0, 0.0, 0.0, []
 
 def update_robot_position(simulation_id):
     """Update the robot's position"""
@@ -584,40 +587,6 @@ def update_robot_position(simulation_id):
         forklift_position_x = x
         forklift_position_y = y
         forklift_position_z = z
-        
-        
-def send_box_positions_to_julia(packed_boxes):
-    
-    print("Packed boxes before sending to Julia:", packed_boxes)
-    for i, box in enumerate(packed_boxes):
-        print(f"Box {i}: Position={box['position']}, Angle={box.get('angle', 0.0)}, State={box.get('state', 'unknown')}")
-
-
-    """Send packed box positions to the Julia backend."""
-    url = f"{API_BASE_URL}/update-boxes"
-    
-    # Prepare data to send
-    data = {
-        "boxes": convert_decimal([{
-            "position": box["position"],
-            "angle": box.get("angle", 0.0),  # Default angle to 0.0 if missing
-            "state": box.get("state", "unknown")  # Default state to "unknown" if missing
-        } for box in packed_boxes])
-    }
-
-    print("Data being sent to Julia:", data)  # Debugging log
-
-    try:
-        response = requests.post(url, json=data)
-        response.raise_for_status()
-        print("Successfully sent box positions to Julia:", response.json())
-    except requests.RequestException as e:
-        print(f"Error sending box positions to Julia: {e}")
-    
-    for i, box in enumerate(packed_boxes):
-        if "position" not in box or "angle" not in box or "state" not in box:
-            print(f"Invalid box at index {i}: {box}")
-
         
 def interpolate_position(current, target, alpha):
     return current + (target - current) * alpha
@@ -646,7 +615,7 @@ def main():
     glEnable(GL_TEXTURE_2D)
 
     # Load textures and models
-    floor_texture = load_texture("piso.jpg")
+    floor_texture = load_texture("Floor.jpg")
     background_texture = load_texture("back.png")  # Carga la textura de fondo
     camera = Camera()
     objetos.append(OBJ("forklift.obj", swapyz=True))
@@ -657,30 +626,30 @@ def main():
     objetos3[0].generate()
     objetos3_2.append(OBJ("Catering_Truck.obj", swapyz= True))
     objetos3_2[0].generate()
-    
-    # Initialize simulation in Julia and get the simulation ID
+
+    # Generate boxes
+    num_cajas = 50
+    box_positions = generate_box_positions(num_cajas)
+    cajas = [
+        Caja(dimensions, color, (x, y, z))
+        for x, y, z, dimensions, color in box_positions
+    ]
+
+    # Initialize simulation and get robot id
     simulation_id, forklift_position_x, forklift_position_y, forklift_position_z, robots = initialize_simulation()
     if simulation_id is None:
         print("Failed to initialize simulation.")
         return
 
-    # Generate packed boxes and visualize them
-    num_cajas = 50
-    container_dimensions = (320.0, 220.0, 200.0)  # Width, height, depth of container
-    cajas, packed_boxes = initialize_boxes(num_cajas, container_dimensions)
-    
-        # Validate dimensions for Bin and Items
-    if any(dim <= 0 for dim in container_dimensions):
-        raise ValueError("Container dimensions must be positive and non-zero.")
-
-
-    # Send packed box positions to Julia
-    send_box_positions_to_julia(packed_boxes)
-
     # Pygame clock for framerate control
     clock = pygame.time.Clock()
     pygame.event.set_grab(True)  # Capture mouse
     pygame.mouse.set_visible(False)
+    
+    simulation_id, forklift_position_x, forklift_position_y, forklift_position_z, robots = initialize_simulation()
+    if simulation_id is None:
+        print("Failed to initialize simulation.")
+        return
 
     # Main loop
     done = False
@@ -702,12 +671,28 @@ def main():
                     camera.distance += 1.0
                     camera.distance = min(100.0, camera.distance)
                     
-        # Update robot position from Julia
-        update_robot_position(simulation_id)
-        
+        # Update robot position periodically
+        current_time = time.time()
+        if current_time - last_position_fetch_time > position_update_interval:
+            update_robot_position(simulation_id)
+            last_position_fetch_time = current_time
         # Handle key inputs for camera movement
         keys = pygame.key.get_pressed()
         handle_keys(camera, keys)
+
+        # Periodically update the robot's position
+        current_time = time.time()
+        if current_time - last_position_fetch_time > position_update_interval:
+            robot_x, robot_y, robot_z = get_robot_position(simulation_id)  # Usar simulation_id correcto
+            if robot_x is not None and robot_y is not None and robot_z is not None:
+                forklift_position_x, forklift_position_y, forklift_position_z = robot_x, robot_y, robot_z
+            last_position_fetch_time = current_time  # Update the time of last position fetch
+            
+        try:
+            requests.post(f"{API_BASE_URL}/simulation/{simulation_id}", 
+                        json={"velocidad": 1.0, "tiempo": position_update_interval})
+        except requests.RequestException as e:
+            print(f"Error updating simulation: {e}")
 
         # Update camera view
         glLoadIdentity()
@@ -740,3 +725,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
