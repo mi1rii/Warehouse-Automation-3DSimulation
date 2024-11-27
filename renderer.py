@@ -8,6 +8,7 @@ from robot import *
 from caja import *
 from main import *
 from linea_bresenham import *
+import math
 
 # Importar constantes necesarias
 from main import (
@@ -18,6 +19,11 @@ from main import (
     contenedor_ancho, contenedor_altura, contenedor_profundidad,
     rectangulo_ancho, rectangulo_profundidad, rectangulo_posicion
 )
+
+# Variables for camera rotation
+camera_angle_h = 0.0  # Horizontal angle
+camera_angle_v = 0.0  # Vertical angle
+mouse_sensitivity = 0.1  # Sensitivity of mouse movement
 
 def init_gl():
     """Inicializa la ventana de Pygame y configura OpenGL."""
@@ -207,3 +213,34 @@ def render_scene(simulation):
                 dibujar_caja(package, color_override=(1.0, 1.0, 0.0))
         elif package["state"] == "in_container":
             dibujar_caja(package, color_override=(0.0, 1.0, 0.0))
+
+def handle_mouse_motion():
+    global camera_angle_h, camera_angle_v
+    mouse_x, mouse_y = pygame.mouse.get_pos()  # Get current mouse position
+    center_x, center_y = screen_width // 2, screen_height // 2  # Center of the screen
+
+    # Calculate the difference from the center
+    dx = mouse_x - center_x
+    dy = mouse_y - center_y
+
+    # Update camera angles based on mouse movement
+    camera_angle_h += dx * mouse_sensitivity
+    camera_angle_v -= dy * mouse_sensitivity  # Invert vertical movement
+    camera_angle_v = max(-89.0, min(89.0, camera_angle_v))  # Limit vertical angle
+
+    # Move the mouse back to the center of the screen
+    pygame.mouse.set_pos(center_x, center_y)
+
+def display(simulation):
+    """Renderiza la escena de la simulación."""
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)  # Limpiar buffers
+
+    # Update camera position based on angles
+    eye_x = EYE_X + math.cos(math.radians(camera_angle_h)) * math.cos(math.radians(camera_angle_v)) * EYE_Z
+    eye_y = EYE_Y + math.sin(math.radians(camera_angle_v)) * EYE_Z
+    eye_z = EYE_Z + math.sin(math.radians(camera_angle_h)) * math.cos(math.radians(camera_angle_v)) * EYE_Z
+
+    gluLookAt(eye_x, eye_y, eye_z, CENTER_X, CENTER_Y, CENTER_Z, UP_X, UP_Y, UP_Z)
+
+    renderer.render_scene(simulation)
+    simulation.update()  # Actualizar estado de la simulación
