@@ -37,7 +37,7 @@ end
 # Ruta para inicializar la simulación
 route("/simulation", method = POST) do
     num_robots = try parse(Int, jsonpayload()["num_robots"]) catch e 5 end
-    num_packages = try parse(Int, jsonpayload()["num_packages"]) catch e 20 end
+    num_packages = try parse(Int, jsonpayload()["num_packages"]) catch e 100 end
 
     # Crear ID de simulación
     id = string(uuid1())
@@ -53,7 +53,8 @@ route("/simulation", method = POST) do
         max_attempts = 100  # Número máximo de intentos para colocar una caja sin superposiciones
         attempt = 0
         success = false
-
+        new_box = nothing  # Inicializar `new_box` antes del bucle
+    
         while attempt < max_attempts && !success
             new_box = ModuloCaja.crearCaja(dim_board, zona_descarga, margin)
             if is_far_enough(new_box.posicion, boxes)
@@ -63,12 +64,13 @@ route("/simulation", method = POST) do
                 attempt += 1
             end
         end
-
-        if !success
+    
+        if !success && new_box != nothing
             println("Warning: No se pudo colocar una caja sin superposición después de $max_attempts intentos.")
             push!(boxes, new_box)
         end
     end
+    
 
     # Almacenar en instancias
     instances[id] = robots

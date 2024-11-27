@@ -1,27 +1,36 @@
-# main.py
+import os
 import pygame
 from pygame.locals import *
+import numpy as np
+import requests
+import json
+
 from OpenGL.GL import *
 from OpenGL.GLU import *
-import math
-import random
-import numpy as np
-
-from Caja import Caja
-
-# Import obj loader
-from objloader import *
+from opmat import OpMat
+from linea_bresenham import LineaBresenham3D  # Importar la función de Bresenham
 
 # Parámetros de pantalla y simulación
-SCREEN_WIDTH = 900
-SCREEN_HEIGHT = 700
+STACK_TOLERANCE = 1.0
+screen_width = 700
+screen_height = 700
 
-# Parámetros de proyección perspectiva para 3D
-FOVY = 60.0
-ZNEAR = 1.0
-ZFAR = 500.0
+dimBoard = 150.0
+zonaDescarga = 10.0
+margin = 10.0    # Margen en unidades
 
-# Posición inicial de la cámara
+# Definir parámetros de proyección ortográfica para 2D
+ORTHO_LEFT = -dimBoard
+ORTHO_RIGHT = dimBoard
+ORTHO_BOTTOM = -dimBoard
+ORTHO_TOP = dimBoard
+ORTHO_NEAR = -1.0
+ORTHO_FAR = 1.0
+
+# Posición de la cámara 
+EYE_X = 0.0
+EYE_Y = 0.0
+EYE_Z = 1.0 
 CENTER_X = 0.0
 CENTER_Y = 0.0
 CENTER_Z = 0.0
@@ -29,453 +38,282 @@ UP_X = 0.0
 UP_Y = 1.0
 UP_Z = 0.0
 
-# Variables para dibujar los ejes del sistema
-AXIS_LENGTH = 50
-
-objetos = []
-objetos2 = []
-
-# Clase para manejar la cámara
-class Camera:
+class SimulationState:
+    """Clase para gestionar el estado de la simulación."""
     def __init__(self):
-        self.angle_h = 0.0  # Ángulo horizontal (yaw)
-        self.angle_v = 0.0  # Ángulo vertical (pitch)
-        self.distance = 30.0  # Distancia desde el centro
-        self.mouse_sensitivity = 0.2
-        self.move_speed = 1.0
-
-    def handle_mouse_motion(self, dx, dy):
-        self.angle_h += dx * self.mouse_sensitivity
-        self.angle_v += dy * self.mouse_sensitivity
-        self.angle_v = max(-89.0, min(89.0, self.angle_v))  # Limitar el pitch
-
-    def get_position(self):
-        rad_h = math.radians(self.angle_h)
-        rad_v = math.radians(self.angle_v)
-        x = self.distance * math.cos(rad_v) * math.sin(rad_h)
-        y = self.distance * math.sin(rad_v)
-        z = self.distance * math.cos(rad_v) * math.cos(rad_h)
-        return (x, y, z)
-
-    def apply_view(self):
-        eye = self.get_position()
-        gluLookAt(
-            eye[0], eye[1], eye[2],
-            CENTER_X, CENTER_Y, CENTER_Z,
-            UP_X, UP_Y, UP_Z
+        self.simulation_id = None
+        self.robots_state = []
+        self.packages_state = []
+        self.api_url = "http://localhost:8000"
+  
+    def initialize_simulation(self, num_robots=5, num_packages=100):
+        """Inicializa una nueva simulación con robots y cajas."""
+        response = requests.post(
+            f"{self.api_url}/simulation",
+            json={"num_robots": num_robots, "num_packages": num_packages}
         )
-        
-def displayobj():
-    glPushMatrix()  
-    #correcciones para dibujar el objeto en plano XZ
-    #esto depende de cada objeto
-    glRotatef(-90.0, 1.0, 0.0, 0.0)
-    glTranslatef(0.0, 0.0, 0.0)
-    glScale(2.0,2.0,2.0)
-    objetos[0].render()  
-    glPopMatrix()
-    
-def displayobj2():
-    glPushMatrix()  
-    #correcciones para dibujar el objeto en plano XZ
-    #esto depende de cada objeto
-    glRotatef(-90.0, 270.0, 0.0, 0.0)
-    glTranslatef(20.0, 42.5, 0)
-    glScale(0.9,0.6, 0.5)
-    objetos2[0].render()  
-    glPopMatrix()
-    
-def generate_box_positions(num_cajas):
-    colors = [
-        (198/255, 154/255, 101/255),  # Rojo
-        (198/255, 154/255, 101/255),  # Verde
-        (198/255, 154/255, 101/255),  # Azul
-        (198/255, 154/255, 101/255),  # Amarillo
-        (198/255, 154/255, 101/255),  # Magenta
+        data = response.json()
+        self.simulation_id = data["id"]
+        self.robots_state = data["robots"]
+        self.packages_state = data["packages"]
+
+        if len(self.robots_state) < num_robots:
+            print(f"Warning: Expected {num_robots} robots, but only {len(self.robots_state)} were initialized.")
+  
+    def update(self):
+        """Actualiza el estado de la simulación consultando la API."""
+        if not self.simulation_id:
+            raise ValueError("Simulation ID not set. Make sure to initialize the simulation first.")
+      
+        response = requests.post(f"{self.api_url}/simulation/{self.simulation_id}")
+      
+        print("Response content:", response.content)  # Debug: check raw response content
+      
+        try:
+            data = response.json()
+            self.robots_state = data["robots"]
+            self.packages_state = data["packages"]
+        except json.JSONDecodeError:
+            print("Failed to parse JSON. Response content:", response.content)
+            data = None
+  
+        return data
+  
+    def cleanup(self):
+        """Limpia la simulación eliminándola de la API."""
+        if self.simulation_id:
+            requests.delete(f"{self.api_url}/simulation/{self.simulation_id}")
+
+def dibujarPlano():
+    """Función para dibujar el plano de simulación (un rectángulo)."""
+    opmat = OpMat()
+    opmat.push()
+
+    glColor3f(1.0, 1.0, 1.0)  # Color blanco para el rectángulo
+
+    # Definir los vértices del rectángulo principal
+    vertices = [
+        (-dimBoard, -dimBoard, 0),
+        (dimBoard, -dimBoard, 0),
+        (dimBoard, dimBoard, 0),
+        (-dimBoard, dimBoard, 0)
     ]
 
-    dimensions_list = [
-        (1, 1, 1), 
-        (0.6, 0.4, 0.6), 
-        (2, 2, 2),  
-        (3, 3, 3),
-        (3, 1, 3,)
+    # Dibujar las líneas del rectángulo usando OpenGL
+    glBegin(GL_LINES)
+    # Lado inferior
+    glVertex3f(vertices[0][0], vertices[0][1], vertices[0][2])
+    glVertex3f(vertices[1][0], vertices[1][1], vertices[1][2])
+
+    # Lado derecho
+    glVertex3f(vertices[1][0], vertices[1][1], vertices[1][2])
+    glVertex3f(vertices[2][0], vertices[2][1], vertices[2][2])
+
+    # Lado superior
+    glVertex3f(vertices[2][0], vertices[2][1], vertices[2][2])
+    glVertex3f(vertices[3][0], vertices[3][1], vertices[3][2])
+
+    # Lado izquierdo
+    glVertex3f(vertices[3][0], vertices[3][1], vertices[3][2])
+    glVertex3f(vertices[0][0], vertices[0][1], vertices[0][2])
+    glEnd()
+
+    opmat.pop()
+
+def dibujar_robot(robot_state):
+    opmat = OpMat()
+    opmat.push()
+    posicion = robot_state["position"]
+    angulo = robot_state["angle"]
+    
+    if len(posicion) == 2:
+        x, y = posicion
+        z = 0.0
+    elif len(posicion) == 3:
+        x, y, z = posicion
+    else:
+        raise ValueError("La posición debe tener 2 o 3 elementos.")
+    
+    opmat.translate(x, y, z)
+    opmat.rotate(np.degrees(angulo), 0, 0, 1)
+    opmat.scale(0.2, 0.2, 1.0)  # Escalar en X e Y solo
+    dibujar_robot_body(opmat)
+    opmat.pop()
+
+def dibujar_robot_body(opmat):
+    """Dibuja el cuerpo del robot como un rectángulo 2D utilizando Bresenham."""
+    vertices = [
+        (-40, -20, 0),
+        (40, -20, 0),
+        (40, 20, 0),
+        (-40, 20, 0)
     ]
 
-    box_positions = []
-    min_distance = 4  # Distancia mínima entre cajas
+    # Transformar las coordenadas usando OpMat
+    transformed_vertices = opmat.mult_points(vertices)  
 
-    for _ in range(num_cajas):
-        while True:
-            # Seleccionar un tipo de dimensiones aleatorio
-            dimensions = random.choice(dimensions_list)
-            x = random.uniform(-50.0, -1.0)  # X en el tercer cuadrante
-            z = random.uniform(50.0, -1.0)  # Z en el tercer cuadrante
-            y = dimensions[1] / 2.0 # Fijo para que la caja esté encima del piso
+    # Definir las aristas del rectángulo
+    edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0)
+    ]
 
-            color = random.choice(colors)
-            # Verificar colisiones en el plano X-Z
-            collision = False
-            for pos in box_positions:
-                distance = math.sqrt((x - pos[0]) ** 2 + (z - pos[2]) ** 2)  # Comparar X e Z
-                if distance < min_distance:
-                    collision = True
-                    break
+    glColor3f(30/255, 68/255, 168/255)  # Color azul para los robots
 
-            if not collision:
-                box_positions.append((x, y, z, dimensions, color))
-                break
+    # Dibujar cada arista usando Bresenham
+    for edge in edges:
+        start = transformed_vertices[edge[0]]
+        end = transformed_vertices[edge[1]]
+        LineaBresenham3D(start[0], start[1], 0, end[0], end[1], 0)  # Dibujar línea usando Bresenham
 
-    return box_positions
-
-# Función para dibujar un cielo en forma de cubo
-
-def draw_skybox():
-    glPushMatrix()
-    glEnable(GL_DEPTH_TEST)  
-    glColor3f(0.53, 0.81, 0.98)  # Color azul cielo
+def dibujar_caja(package_state, color_override=None):
+    opmat = OpMat()
+    opmat.push()
+    posicion = package_state["position"]
+    angulo = package_state["angle"]
     
-    size = 50.0  # Tamaño del cubo del cielo, basado en el tamaño del piso
-
-    # Dibujar las caras internas del cubo
-    glBegin(GL_QUADS)
-
-    # Cara frontal
-    glVertex3f(-size, size, -size)
-    glVertex3f(size, size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(-size, -size, -size)
-
-    # Cara trasera
-    glVertex3f(-size, size, size)
-    glVertex3f(size, size, size)
-    glVertex3f(size, -size, size)
-    glVertex3f(-size, -size, size)
-
-    # Cara izquierda
-    glVertex3f(-size, size, size)
-    glVertex3f(-size, size, -size)
-    glVertex3f(-size, -size, -size)
-    glVertex3f(-size, -size, size)
-
-    # Cara derecha
-    glVertex3f(size, size, size)
-    glVertex3f(size, size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(size, -size, size)
-
-    # Cara superior
-    glVertex3f(-size, size, -size)
-    glVertex3f(size, size, -size)
-    glVertex3f(size, size, size)
-    glVertex3f(-size, size, size)
-
-    # Cara inferior (opcional para el cielo, usualmente no visible)
-    glVertex3f(-size, -size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(size, -size, size)
-    glVertex3f(-size, -size, size)
-
-    glEnd()
-
-    glEnable(GL_DEPTH_TEST)  # Restaurar el test de profundidad
-    glPopMatrix()
+    if len(posicion) == 2:
+        x, y = posicion
+        z = 0.0
+    elif len(posicion) == 3:
+        x, y, z = posicion
+    else:
+        raise ValueError("La posición debe tener 2 o 3 elementos.")
     
-def draw_cajuela():
-    glPushMatrix()
-    glTranslatef(20.0, 6.0, -23.0)
-    glScale(1.0, 0.99, 2.0)
+    opmat.translate(x, y, z)
+    opmat.rotate(np.degrees(angulo), 0, 0, 1)
+    opmat.scale(0.2, 0.2, 1.0)  # Escalar en X e Y solo
+    dibujar_caja_body(opmat, color_override)
+    opmat.pop()
 
-    # Habilitar el test de profundidad
-    glEnable(GL_DEPTH_TEST)
+def dibujar_caja_body(opmat, color_override=None):
+    """Dibuja el contorno de una caja como un rectángulo 2D utilizando Bresenham."""
+    # Definir los vértices de la caja (un rectángulo)
+    vertices = [
+        (-10, -10, 0),
+        (10, -10, 0),
+        (10, 10, 0),
+        (-10, 10, 0)
+    ]
 
-    size = 6.0  # Tamaño del cubo
+    # Transformar las coordenadas usando OpMat
+    transformed_vertices = opmat.mult_points(vertices) 
 
-    # Dibujar las caras del cubo
+    # Definir las aristas de la caja
+    edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0)
+    ]
 
-    # Cara frontal (gris)
-    glColor3f(0.5, 0.5, 0.5)
-    glBegin(GL_QUADS)
-    glVertex3f(-size, size, -size)
-    glVertex3f(size, size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(-size, -size, -size)
-    glEnd()
+    # Establecer el color de la caja
+    if color_override:
+        glColor3f(*color_override)
+    else:
+        glColor3f(187/255, 156/255, 110/255)  # Color por defecto de las cajas
 
-    # Cara izquierda (gris)
-    glBegin(GL_QUADS)
-    glVertex3f(-size, size, size)
-    glVertex3f(-size, size, -size)
-    glVertex3f(-size, -size, -size)
-    glVertex3f(-size, -size, size)
-    glEnd()
+    # Dibujar cada arista usando Bresenham
+    for edge in edges:
+        start = transformed_vertices[edge[0]]
+        end = transformed_vertices[edge[1]]
+        LineaBresenham3D(start[0], start[1], 0, end[0], end[1], 0)  # Dibujar línea usando Bresenham
 
-    # Cara derecha (gris)
-    glBegin(GL_QUADS)
-    glVertex3f(size, size, size)
-    glVertex3f(size, size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(size, -size, size)
-    glEnd()
-    
-    # Cara superior (gris)
-    glBegin(GL_QUADS)
-    glVertex3f(-size, size, -size)
-    glVertex3f(size, size, -size)
-    glVertex3f(size, size, size)
-    glVertex3f(-size, size, size)
-    glEnd()
+def Init(simulation):
+    """Inicializa la ventana de Pygame y configura OpenGL."""
+    screen = pygame.display.set_mode(
+        (screen_width, screen_height), DOUBLEBUF | OPENGL)
+    pygame.display.set_caption("OpenGL: Robots")
 
-    # Cara inferior (rojo oscuro)
-    glColor3f(109/255, 17/255, 10/255)
-    glBegin(GL_QUADS)
-    glVertex3f(-size, -size, -size)
-    glVertex3f(size, -size, -size)
-    glVertex3f(size, -size, size)
-    glVertex3f(-size, -size, size)
-    glEnd()
-
-    # Dibujar las aristas del cubo en color negro
-    glColor3f(0.0, 0.0, 0.0) 
-    glLineWidth(1.0) 
-    glBegin(GL_LINES)
-    
-    # Cara frontal (aristas)
-    glVertex3f(-size, size, -size)
-    glVertex3f(size, size, -size)
-
-    glVertex3f(size, size, -size)
-    glVertex3f(size, -size, -size)
-
-    glVertex3f(size, -size, -size)
-    glVertex3f(-size, -size, -size)
-
-    glVertex3f(-size, -size, -size)
-    glVertex3f(-size, size, -size)
-
-    # Cara trasera (aristas)
-    glVertex3f(-size, size, size)
-    glVertex3f(size, size, size)
-
-    glVertex3f(size, size, size)
-    glVertex3f(size, -size, size)
-
-    glVertex3f(size, -size, size)
-    glVertex3f(-size, -size, size)
-
-    glVertex3f(-size, -size, size)
-    glVertex3f(-size, size, size)
-
-    # Conectar cara frontal y trasera (aristas)
-    glVertex3f(-size, size, -size)
-    glVertex3f(-size, size, size)
-
-    glVertex3f(size, size, -size)
-    glVertex3f(size, size, size)
-
-    glVertex3f(size, -size, -size)
-    glVertex3f(size, -size, size)
-
-    glVertex3f(-size, -size, -size)
-    glVertex3f(-size, -size, size)
-
-    glEnd()
-
-    glPopMatrix()
-
-    
-# Función para cargar texturas
-def load_texture(texture_path):
-    try:
-        texture_surface = pygame.image.load(texture_path)
-    except pygame.error as e:
-        print(f"Unable to load texture image: {texture_path}")
-        raise SystemExit(e)
-    
-    texture_data = pygame.image.tostring(texture_surface, "RGB", True)
-    width = texture_surface.get_width()
-    height = texture_surface.get_height()
-
-    texture_id = glGenTextures(1)
-    glBindTexture(GL_TEXTURE_2D, texture_id)
-    
-    # Configurar los parámetros de la textura para repetir
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)  # Repetir en el eje S (X)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)  # Repetir en el eje T (Z)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-    
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture_data)
-    glBindTexture(GL_TEXTURE_2D, 0)
-    return texture_id
-
-# Función para dibujar los ejes en direcciones positivas y negativas
-def draw_axes():
-    glLineWidth(3.0)
-    glBegin(GL_LINES)
-    # Eje X en rojo
-    glColor3f(1.0, 0.0, 0.0)
-    glVertex3f(-AXIS_LENGTH, 0.0, 0.0)
-    glVertex3f(AXIS_LENGTH, 0.0, 0.0)
-    # Eje Y en verde
-    glColor3f(0.0, 1.0, 0.0)
-    glVertex3f(0.0, -AXIS_LENGTH, 0.0)
-    glVertex3f(0.0, AXIS_LENGTH, 0.0)
-    # Eje Z en azul
-    glColor3f(0.0, 0.0, 1.0)
-    glVertex3f(0.0, 0.0, -AXIS_LENGTH)
-    glVertex3f(0.0, 0.0, AXIS_LENGTH)
-    glEnd()
-    glLineWidth(1.0)
-    
-
-# Función para dibujar el piso con textura repetida
-def draw_floor(texture_id):
-    glEnable(GL_TEXTURE_2D)
-    glBindTexture(GL_TEXTURE_2D, texture_id)
-    glColor3f(1.0, 1.0, 1.0)  # Color blanco para mantener la textura original\
-
-    glBegin(GL_QUADS)
-    # Definir el tamaño del piso
-    size = 50.0
-    y = 0.0  # Altura del piso
-
-    # Número de repeticiones de la textura
-    repeat = 10.0
-
-    # Coordenadas del piso con texturas repetidas (orden invertido)
-    glTexCoord2f(0.0, 0.0)
-    glVertex3f(-size, y, size)
-
-    glTexCoord2f(repeat, 0.0)
-    glVertex3f(size, y, size)
-
-    glTexCoord2f(repeat, repeat)
-    glVertex3f(size, y, -size)
-
-    glTexCoord2f(0.0, repeat)
-    glVertex3f(-size, y, -size)
-    glEnd()
-
-    glBindTexture(GL_TEXTURE_2D, 0)
-    glDisable(GL_TEXTURE_2D)
-    
-
-# Función para manejar eventos de teclado
-def handle_keys(camera, keys):
-    if keys[pygame.K_w]:
-        camera.distance -= 0.5
-        camera.distance = max(5.0, camera.distance)
-    if keys[pygame.K_s]:
-        camera.distance += 0.5
-    if keys[pygame.K_a]:
-        camera.angle_h -= 1.0
-    if keys[pygame.K_d]:
-        camera.angle_h += 1.0
-
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), DOUBLEBUF | OPENGL)
-    pygame.display.set_caption("Simulación 3D: Piso Texturizado y Ejes 3D")
-
-    # Configuración de la proyección
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(FOVY, SCREEN_WIDTH / SCREEN_HEIGHT, ZNEAR, ZFAR)
+    # Configurar proyección ortográfica para 2D
+    gluOrtho2D(ORTHO_LEFT, ORTHO_RIGHT, ORTHO_BOTTOM, ORTHO_TOP)
 
-    # Configuración de la vista
     glMatrixMode(GL_MODELVIEW)
-    glLoadIdentity()
+    glLoadIdentity()  # Cargar la identidad para 2D
     
-    glEnable(GL_DEPTH_TEST)  # Habilitar prueba de profundidad
-    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE)  # Habilitar doble cara
-    glDisable(GL_CULL_FACE)  # Asegurarse de que se rendericen ambas caras
+    glClearColor(0, 0, 0, 0)  # Color de fondo negro
+    glDisable(GL_DEPTH_TEST)  # Deshabilitar test de profundidad para 2D
+    glEnable(GL_BLEND) 
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA) 
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)  # Modo de polígono relleno
 
-    # Habilitar texturas
-    glEnable(GL_TEXTURE_2D)
+    # Configurar tamaño de los puntos para visibilidad
+    glPointSize(2.0)  # Puedes ajustar este valor según tus necesidades
 
-    # Cargar la textura del piso
-    floor_texture = load_texture("floor.jpg")
+    simulation.initialize_simulation()  # Iniciar simulación
 
-    # Crear instancia de la cámara
-    camera = Camera()
-    objetos.append(OBJ("forklift.obj", swapyz=True))
-    objetos[0].generate()
+def display(simulation):
+    """Renderiza la escena de la simulación."""
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)  # Limpiar buffers
+    dibujarPlano()  # Dibujar el plano de simulación (rectángulo principal)
     
-    objetos2.append(OBJ("truck.obj", swapyz=True))
-    objetos2[0].generate()
-    
-    num_cajas = 50
-    box_positions = generate_box_positions(num_cajas)
+    simulation.update()  # Actualizar estado de la simulación
 
-    # Crear las cajas con las posiciones, dimensiones y colores generados
-    cajas = [
-        Caja(dimensions, color, (x, y, z))
-        for x, y, z, dimensions, color in box_positions
-    ]
+    # Dibujar todos los robots
+    for robot_state in simulation.robots_state:
+        dibujar_robot(robot_state)
+        
+    # Agrupar cajas en pilas según la tolerancia
+    stacks = {}
+    for package in simulation.packages_state:
+        pos = package["position"]
+        if len(pos) >= 2:
+            x, y = pos[0], pos[1]
+        else:
+            print("Posición inválida:", pos)
+            continue
+        # Redondear posiciones para agrupar en pilas
+        stack_key = (round(x / STACK_TOLERANCE) * STACK_TOLERANCE,
+                    round(y / STACK_TOLERANCE) * STACK_TOLERANCE)
+        if stack_key not in stacks:
+            stacks[stack_key] = []
+        stacks[stack_key].append(package)
 
+    # Determinar el estado de cada pila
+    stack_colors = {}
+    for key, packages in stacks.items():
+        if len(packages) >= 5:
+            stack_colors[key] = (1.0, 0.0, 0.0)  # Rojo para pilas llenas
+        elif len(packages) > 0:
+            stack_colors[key] = (0.0, 1.0, 0.0)  # Verde para pilas disponibles
 
-    clock = pygame.time.Clock()
+    # Dibujar cajas con color basado en el estado de la pila
+    for key, packages in stacks.items():
+        is_full_stack = len(packages) >= 5
+        for package in packages:
+            if is_full_stack:
+                # Dibujar pilas llenas en rojo
+                dibujar_caja(package, color_override=(1.0, 0.0, 0.0))  # Rojo
+            else:
+                # Dibujar pilas disponibles en verde
+                dibujar_caja(package, color_override=(0.0, 1.0, 0.0))  # Verde
+
+def main():
+    """Función principal que ejecuta la simulación."""
+    pygame.init()  # Inicializar Pygame
+    simulation = SimulationState()
     done = False
+    Init(simulation)  # Configurar la simulación
 
-    # Variables para el movimiento del ratón
-    pygame.event.set_grab(True)  # Capturar el ratón
-    pygame.mouse.set_visible(False)  # Ocultar el cursor del ratón
+    clock = pygame.time.Clock()  # Control de FPS
 
-    while not done:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                done = True
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    done = True
-            elif event.type == pygame.MOUSEMOTION:
-                dx, dy = event.rel
-                camera.handle_mouse_motion(dx, dy)
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 4:  # Rueda del ratón hacia arriba
-                    camera.distance -= 1.0
-                    camera.distance = max(5.0, camera.distance)
-                elif event.button == 5:  # Rueda del ratón hacia abajo
-                    camera.distance += 1.0
-                    camera.distance = min(100.0, camera.distance)
+    try:
+        while not done:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    done = True  # Salir del bucle principal
 
-        # Obtener el estado de las teclas
-        keys = pygame.key.get_pressed()
-        handle_keys(camera, keys)
+            display(simulation)  # Renderizar la simulación
+            pygame.display.flip()  # Actualizar la pantalla
+            clock.tick_busy_loop(100)  # Limitar a 100 FPS con mayor precisión
 
-        # Aplicar la transformación de la cámara
-        glLoadIdentity()
-        camera.apply_view()
+    finally:
+        simulation.cleanup()  # Limpiar simulación al finalizar
+        pygame.quit()  # Cerrar Pygame
 
-        # Limpiar buffers
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
-        # Dibujar los ejes
-        draw_axes()
-        
-        # Dibujar el cielo (antes de cualquier otra geometría)
-
-
-        # Dibujar el piso con textura
-        draw_floor(floor_texture)
-        draw_skybox()
-        displayobj()
-        displayobj2()
-        draw_cajuela()
-    
-        
-        # Dibujar las cajas
-        for caja in cajas:
-            caja.draw()
-
-
-        # Actualizar la pantalla
-        pygame.display.flip()
-        clock.tick(60)  # Limitar a 60 FPS
-
-    # Limpiar y salir
-    pygame.quit()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
