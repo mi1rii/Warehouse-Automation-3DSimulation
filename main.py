@@ -11,6 +11,7 @@ import requests
 import time
 
 from Caja import Caja
+from py3dbp import Packer, Bin, Item
 
 API_BASE_URL = "http://127.0.0.1:8000"  # URL of the Genie server
 
@@ -142,13 +143,67 @@ def displayobj4():
     objetos3_2[0].render()  
     glPopMatrix()
 
+def calculate_box_packing(box_positions):
+    """
+    Calculate optimal packing positions for boxes in the truck container
+    Returns a dictionary mapping original box positions to their target positions
+    """
+    print("\n=== Starting Box Packing Calculation ===")
+    print(f"Number of boxes to pack: {len(box_positions)}")
+    
+    # Initialize the packer
+    packer = Packer()
+    
+    # Define the truck container
+    container = Bin("truck_container", 12.0, 12.0, 12.0, 1000.0)
+    packer.add_bin(container)
+    print(f"Container dimensions: {container.width}x{container.height}x{container.depth}")
+    
+    # Add each box as an item
+    for i, (x, y, z, dimensions, color) in enumerate(box_positions):
+        width, height, depth = dimensions
+        item = Item(f"box_{i}", width, height, depth, 0.0)
+        packer.add_item(item)
+        print(f"Added Box {i}: Original position ({x:.2f}, {y:.2f}, {z:.2f}), "
+              f"Dimensions: {width}x{height}x{depth}")
+    
+    # Calculate packing
+    print("\nCalculating optimal packing...")
+    packer.pack(bigger_first=True)
+    
+    # Create mapping of original positions to packed positions
+    position_mapping = {}
+    container = packer.bins[0]
+    
+    print("\n=== Packing Results ===")
+    print(f"Number of items packed: {len(container.items)}")
+    
+    # Map original boxes to their new positions
+    for i, (orig_x, orig_y, orig_z, dimensions, color) in enumerate(box_positions):
+        item_name = f"box_{i}"
+        for item in container.items:
+            if item.name == item_name:
+                new_x = item.position[0] + container.width/2
+                new_y = item.position[1]
+                new_z = item.position[2] + container.depth/2
+                
+                position_mapping[(orig_x, orig_y, orig_z)] = (new_x, new_y, new_z)
+                print(f"Box {i}: Original ({orig_x:.2f}, {orig_y:.2f}, {orig_z:.2f}) -> "
+                      f"Target ({new_x:.2f}, {new_y:.2f}, {new_z:.2f})")
+                break
+    
+    print("\n=== Packing Calculation Complete ===")
+    return position_mapping
+
 def generate_box_positions(num_cajas):
+    print(f"\n=== Generating {num_cajas} Boxes ===")
+    
     colors = [
-        (198/255, 154/255, 101/255),  # Rojo
-        (198/255, 154/255, 101/255),  # Verde
-        (198/255, 154/255, 101/255),  # Azul
-        (198/255, 154/255, 101/255),  # Amarillo
-        (198/255, 154/255, 101/255),  # Magenta
+        (198/255, 154/255, 101/255),
+        (198/255, 154/255, 101/255),
+        (198/255, 154/255, 101/255),
+        (198/255, 154/255, 101/255),
+        (198/255, 154/255, 101/255),
     ]
 
     dimensions_list = [
@@ -156,72 +211,38 @@ def generate_box_positions(num_cajas):
         (4.2, 4.2, 4.2), 
         (0.6, 0.6, 0.6)
     ]
-       
-    # Definir las paredes del pasillo vertical
-    corridor_x_left = 10.0
-    corridor_x_right = 30.0
     
-    corridor_length_start_z = 0.0    # Inicio del pasillo desde la cajuela
-    corridor_length_end_z = 35.0     # Extensión del pasillo a lo largo del eje Z
+    initial_positions = []
+    for i in range(num_cajas):
+        x = random.uniform(10.0, 30.0)
+        z = random.uniform(0.0, 35.0)
+        dimensions = random.choice(dimensions_list)
+        y = dimensions[1] / 2.0
+        color = random.choice(colors)
+        initial_positions.append((x, y, z, dimensions, color))
+        print(f"Generated Box {i}: Position ({x:.2f}, {y:.2f}, {z:.2f}), "
+              f"Dimensions: {dimensions}")
     
-    path_width = 20.0                  # Ancho total del pasillo
-
-    box_positions = []
-    min_distance = 4  # Distancia mínima entre cajas
+    print("\nCalculating optimal positions...")
+    packing_positions = calculate_box_packing(initial_positions)
     
-    contour_lines = [
-        ('left_wall', corridor_length_start_z, corridor_length_end_z, corridor_x_left, 'z'),
-        ('right_wall', corridor_length_start_z, corridor_length_end_z, corridor_x_right, 'z')
-    ]
-
-    # Calcular la longitud total del contorno (dos paredes)
-    total_length = 2 * (corridor_length_end_z - corridor_length_start_z)  # 100 * 2 = 200
-
-    # Proporción de cajas en cada pared (igual para ambas)
-    fraction_per_wall = 1.0  # Todas las cajas se distribuyen en ambas paredes
-
-    num_per_wall = num_cajas // 2
-    remainder = num_cajas % 2
-
-    # Calcular el espaciado entre cajas en cada pared
-    spacing_per_wall = (corridor_length_end_z - corridor_length_start_z) / (num_per_wall - 1) if num_per_wall > 1 else 0
-
-    # Función para agregar una caja si no hay colisión
-    def add_box(x, z, dimensions, color):
-        y = dimensions[1] / 2.0  # Centrar la caja sobre el piso
-        # Verificar colisión con cajas existentes (solo en el plano XZ)
-        for pos in box_positions:
-            existing_x, existing_y, existing_z, _, _ = pos
-            distance = math.sqrt((x - existing_x)**2 + (z - existing_z)**2)
-            if distance < min_distance:
-                return  # Colisión detectada, no agregar la caja
-        box_positions.append((x, y, z, dimensions, color))
-
-# Colocar cajas en la pared izquierda
-    for i in range(num_per_wall):
-        z = corridor_length_start_z + i * spacing_per_wall if num_per_wall > 1 else (corridor_length_start_z + corridor_length_end_z) / 2
-        x = corridor_x_left
-        dimensions = random.choice(dimensions_list)
-        color = random.choice(colors)
-        add_box(x, z, dimensions, color)
-
-    # Colocar cajas en la pared derecha
-    for i in range(num_per_wall):
-        z = corridor_length_start_z + i * spacing_per_wall if num_per_wall > 1 else (corridor_length_start_z + corridor_length_end_z) / 2
-        x = corridor_x_right
-        dimensions = random.choice(dimensions_list)
-        color = random.choice(colors)
-        add_box(x, z, dimensions, color)
-
-    # Si hay una caja adicional, asignarla a una de las paredes (por ejemplo, izquierda)
-    if remainder:
-        z = (corridor_length_start_z + corridor_length_end_z) / 2
-        x = corridor_x_left
-        dimensions = random.choice(dimensions_list)
-        color = random.choice(colors)
-        add_box(x, z, dimensions, color)
-
-    return box_positions
+    print(f"\nTotal boxes generated: {len(initial_positions)}")
+    print(f"Total target positions calculated: {len(packing_positions)}")
+    
+    global box_target_positions
+    box_target_positions = packing_positions
+    
+    # Add debug print to see initial box positions vs target positions
+    print("\n=== Box Positions Summary ===")
+    for i, (x, y, z, dimensions, color) in enumerate(initial_positions):
+        orig_pos = (x, y, z)
+        target_pos = packing_positions.get(orig_pos, "No target assigned")
+        print(f"Box {i}:")
+        print(f"  Initial: ({x:.2f}, {y:.2f}, {z:.2f})")
+        print(f"  Target: {target_pos}")
+        print(f"  Dimensions: {dimensions}")
+    
+    return initial_positions
 
 # Función para dibujar un cielo en forma de cubo
 
@@ -578,6 +599,34 @@ def initialize_simulation():
     except requests.RequestException as e:
         print(f"Error initializing simulation: {e}")
         return None, 0.0, 0.0, 0.0, []
+    
+def update_simulation_state(simulation_id):
+    """Update the simulation state"""
+    try:
+        # Get current positions of boxes
+        response = requests.get(f"{API_BASE_URL}/simulation/{simulation_id}/boxes")
+        response.raise_for_status()
+        boxes_data = response.json()["boxes"]
+        
+        # Update box positions in visualization
+        for i, box_data in enumerate(boxes_data):
+            if i < len(cajas):
+                # Update the box position
+                new_pos = box_data["posicion"]
+                cajas[i].position = (new_pos[0], new_pos[1], new_pos[2])
+                cajas[i].state = box_data["estado_caja"]
+                
+                # Print debug info for boxes being moved
+                if box_data["estado_caja"] == "being_moved":
+                    print(f"Box {i} is being carried at position: {new_pos}")
+                
+        # Get robot position
+        robot_x, robot_y, robot_z = get_robot_position(simulation_id)
+        
+        print(f"Robot Position: ({robot_x}, {robot_y}, {robot_z})")
+            
+    except requests.RequestException as e:
+        print(f"Error updating simulation state: {e}")
 
 def update_robot_position(simulation_id):
     """Update the robot's position"""
@@ -675,6 +724,19 @@ def main():
         current_time = time.time()
         if current_time - last_position_fetch_time > position_update_interval:
             update_robot_position(simulation_id)
+            print(f"\nRobot Position: ({forklift_position_x:.2f}, {forklift_position_y:.2f}, {forklift_position_z:.2f})")
+            
+            # Print the closest box and its target position
+            if box_target_positions:
+                current_pos = (forklift_position_x, forklift_position_y, forklift_position_z)
+                closest_box = min(box_target_positions.keys(), 
+                                 key=lambda pos: ((pos[0]-current_pos[0])**2 + 
+                                                (pos[1]-current_pos[1])**2 + 
+                                                (pos[2]-current_pos[2])**2)**0.5)
+                target = box_target_positions[closest_box]
+                print(f"Closest Box: Original position {closest_box}")
+                print(f"Target position: {target}")
+            
             last_position_fetch_time = current_time
         # Handle key inputs for camera movement
         keys = pygame.key.get_pressed()

@@ -1,5 +1,6 @@
-
 module ModuloRobot
+
+using ..ModuloCaja  # Import ModuloCaja module
 
 export Robot, crearRobot, mover_robot!, to_dict
 
@@ -11,8 +12,9 @@ mutable struct Robot
     velocidad::Float64
     target_x::Float64
     target_y::Float64
-    estado::Symbol
-    last_target_time::Float64
+    estado::Symbol  # :idle, :moving_to_box, :carrying_box, :moving_to_target
+    current_box::Union{Nothing, Int64}  # ID of the box being carried
+    last_target_time::Float64  # Store the last target time as Float64
 end
 
 function crearRobot(pos_inicial::Float64, vel_inicial::Float64)
@@ -25,7 +27,8 @@ function crearRobot(pos_inicial::Float64, vel_inicial::Float64)
         0.0,           # Initial target X
         0.0,           # Initial target Y
         :idle,         # Initial state
-        time()         # Current time
+        nothing,       # No box being carried initially
+        time()         # Current time as Float64
     )
 end
 
@@ -123,6 +126,11 @@ function mover_robot!(robot::Robot, tiempo::Float64, angulo::Float64)
         robot.y = clamp(robot.y, -max_bound, max_bound)
     end
     println("Sending position: x=$(robot.x), y=$(robot.y)")
+
+    # Update box positions if robot is carrying any
+    if robot.estado == :carrying_box
+        ModuloCaja.update_box_state!(simulation_id, [robot.x, robot.y, robot.z])
+    end
 end
 
 # Optional: Add functions for more complex behaviors
@@ -157,6 +165,30 @@ function verificar_colision(robot::Robot, otros_robots::Vector{Robot})
         end
     end
     return false
+end
+
+function update_robot_state!(robot::Robot, boxes::Vector{ModuloCaja.Caja})
+    if robot.estado == :idle
+        # Find closest unplaced box
+        closest_box = find_closest_unplaced_box(robot, boxes)
+        if closest_box !== nothing
+            robot.estado = :moving_to_box
+            set_target_position!(robot, boxes[closest_box].posicion)
+        end
+    elseif robot.estado == :moving_to_box
+        # Check if we've reached the box
+        if has_reached_target(robot)
+            robot.estado = :carrying_box
+            robot.current_box = closest_box
+            set_target_position!(robot, boxes[closest_box].target_position)
+        end
+    elseif robot.estado == :carrying_box
+        # Check if we've reached the target position
+        if has_reached_target(robot)
+            robot.estado = :idle
+            robot.current_box = nothing
+        end
+    end
 end
 
 end # module

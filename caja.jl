@@ -1,82 +1,63 @@
 # caja
 
 module ModuloCaja
-    export Caja, crearCaja, setPos, setPosYEstado!, get_estado_caja, set_estado_caja, get_posicion_caja, get_angulo_caja, to_dict
-    using Random
-    using JSON  
-    # Estructura mutable para representar una caja
+    export Caja, crearCaja, update_box_state!, get_all_boxes
+
     mutable struct Caja
-        posicion::Vector{Float64}  # Posición [x, y, z] de la caja
-        angulo::Float64            # Ángulo de orientación de la caja
-        estado_caja::String        # Estado actual de la caja 
+        posicion::Vector{Float64}
+        target_position::Vector{Float64}
+        estado_caja::String  # "waiting", "being_moved", "placed"
+        dimensions::Vector{Float64}
     end
 
-    # Extensión de la función Dict para serializar Caja a JSON
-    function Base.Dict(caja::Caja)
-        Dict(
-            "posicion" => caja.posicion,
-            "angulo" => caja.angulo,
-            "estado_caja" => caja.estado_caja
-        )
-    end
+    # Global dictionary to store boxes for each simulation
+    const simulation_boxes = Dict()
 
-    # Función para crear una nueva caja con posiciones aleatorias fuera del margen y zona de descarga
-    function crearCaja(dimBoard::Float64, zonaDescarga::Float64, margin::Float64)
-        min_coord = -dimBoard + 10 + margin  # Evita crear dentro del margen inferior
-        max_coord = dimBoard - 10 - margin   # Evita crear dentro del margen superior
-        x = rand() * (max_coord - min_coord) + min_coord
-        y = rand() * (max_coord - min_coord) + min_coord
-        # Repetir hasta que la caja no esté en la zona de descarga
-        while y >= dimBoard - zonaDescarga - margin
-            x = rand() * (max_coord - min_coord) + min_coord
-            y = rand() * (max_coord - min_coord) + min_coord
+    function crearCaja(sim_id::String, posicion::Vector{Float64}, dimensions::Vector{Float64})
+        caja = Caja(posicion, [0.0, 0.0, 0.0], "waiting", dimensions)
+        if !haskey(simulation_boxes, sim_id)
+            simulation_boxes[sim_id] = []
         end
-        posicion = [x, y, 3.0]               # Posición inicial con z=3.0
-        angulo = rand() * 2π                  # Ángulo aleatorio entre 0 y 2π
-        estado_caja = "esperando"             # Estado inicial de la caja
-        return Caja(posicion, angulo, estado_caja)
+        push!(simulation_boxes[sim_id], caja)
+        return caja
     end
 
-    # Función para establecer la posición y ángulo de una caja
-    function setPos(caja::Caja, pos::Vector{Float64}, an::Float64)
-        caja.posicion = pos
-        caja.angulo = an
+    function update_box_state!(sim_id::String, robot_position::Vector{Float64})
+        if !haskey(simulation_boxes, sim_id)
+            return
+        end
+        
+        for caja in simulation_boxes[sim_id]
+            # Calculate distance to robot
+            distance_to_robot = sqrt(sum((caja.posicion - robot_position).^2))
+            
+            if caja.estado_caja == "waiting" && distance_to_robot < 2.0  # Increased pickup range
+                caja.estado_caja = "being_moved"
+                println("Box picked up at position: ", caja.posicion)
+            elseif caja.estado_caja == "being_moved"
+                # Update box position to follow robot
+                caja.posicion = copy(robot_position)  # Use copy to avoid reference issues
+                
+                # Check if we're at target position
+                distance_to_target = sqrt(sum((caja.posicion - caja.target_position).^2))
+                if distance_to_target < 1.0
+                    caja.estado_caja = "placed"
+                    caja.posicion = copy(caja.target_position)
+                    println("Box placed at target position: ", caja.target_position)
+                end
+            end
+        end
     end
 
-    # Función para establecer posición, ángulo y estado de una caja
-    function setPosYEstado!(caja::Caja, pos::Vector{Float64}, an::Float64, estado::String)
-        caja.posicion = pos
-        caja.angulo = an
-        caja.estado_caja = estado
+    function get_all_boxes(sim_id::String)
+        if !haskey(simulation_boxes, sim_id)
+            return []
+        end
+        return [Dict(
+            "posicion" => box.posicion,
+            "target_position" => box.target_position,
+            "estado_caja" => box.estado_caja,
+            "dimensions" => box.dimensions
+        ) for box in simulation_boxes[sim_id]]
     end
-
-    # Getter para el estado de la caja
-    function get_estado_caja(caja::Caja)
-        return caja.estado_caja
-    end
-
-    # Setter para el estado de la caja
-    function set_estado_caja(caja::Caja, estado::String)
-        caja.estado_caja = estado
-    end
-
-    # Getter para la posición de la caja
-    function get_posicion_caja(caja::Caja)
-        return caja.posicion
-    end
-
-    # Getter para el ángulo de la caja
-    function get_angulo_caja(caja::Caja)
-        return caja.angulo
-    end
-
-    # Función para crear una representación serializable de la caja
-    function to_dict(caja::Caja)
-       return Dict(
-           "position" => caja.posicion,
-           "angle" => caja.angulo,
-           "state" => caja.estado_caja
-       )
-    end
-
-end  # Fin del módulo ModuloCaja
+end

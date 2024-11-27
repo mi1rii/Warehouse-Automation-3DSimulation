@@ -1,12 +1,14 @@
-
+include("caja.jl")
 include("robot.jl")
 
-using .ModuloRobot  # Cambiar a importación relativa
+using .ModuloCaja
+using .ModuloRobot
 using Genie, Genie.Renderer.Json, Genie.Requests
-using UUIDs  # Import UUIDs module
+using UUIDs
 
 # Global simulation state
 const robots = Dict()
+const simulation_state = Dict()
 
 # Initialize simulation
 route("/simulation", method = POST) do
@@ -36,6 +38,8 @@ route("/simulation/:id", method = POST) do
 
     for robot in robots[id]
         ModuloRobot.mover_robot!(robot, velocidad * tiempo, robot.angulo)
+        # Update boxes based on robot position
+        ModuloCaja.update_box_state!(id, [robot.x, robot.y, robot.z])
     end
 
     # Update and return the new state
@@ -52,6 +56,57 @@ route("/simulation/:id", method = DELETE) do
     else
         return json(Dict("error" => "Simulation not found")), 404
     end
+end
+
+# Set box targets
+route("/simulation/:id/set_box_targets", method = POST) do
+    id = payload(:id)
+    if !haskey(robots, id)
+        return json(Dict("error" => "Simulation not found")), 404
+    end
+    
+    # Receive box target positions from Python
+    box_targets = jsonpayload()["box_targets"]
+    
+    # Store box targets in simulation state
+    if !haskey(simulation_state, id)
+        simulation_state[id] = Dict()
+    end
+    simulation_state[id]["box_targets"] = box_targets
+    
+    return json(Dict("status" => "success"))
+end
+
+# Add a route to get current state of all boxes
+route("/simulation/:id/boxes", method = GET) do
+    id = payload(:id)
+    if !haskey(robots, id)
+        return json(Dict("error" => "Simulation not found")), 404
+    end
+    
+    # Get current box states from ModuloCaja
+    boxes = ModuloCaja.get_all_boxes(id)
+    
+    return json(Dict("boxes" => boxes))
+end
+
+# Add a route to initialize boxes
+route("/simulation/:id/init_boxes", method = POST) do
+    id = payload(:id)
+    if !haskey(robots, id)
+        return json(Dict("error" => "Simulation not found")), 404
+    end
+    
+    box_data = jsonpayload()["boxes"]
+    for box in box_data
+        ModuloCaja.crearCaja(
+            id,
+            [box["position"]["x"], box["position"]["y"], box["position"]["z"]],
+            [box["dimensions"]["x"], box["dimensions"]["y"], box["dimensions"]["z"]]
+        )
+    end
+    
+    return json(Dict("status" => "success"))
 end
 
 # Start Genie server
