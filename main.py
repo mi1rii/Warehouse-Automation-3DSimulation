@@ -40,7 +40,7 @@ area_offset_x = 400.0  # Ajustado para posicionar el robot dentro del rectángul
 area_offset_z = 0.0     # Mantiene el desplazamiento en Z
 
 # Parámetros de proyección perspectiva para 3D
-FOVY = 60.0
+FOVY = 40.0
 ZNEAR = 1.0
 ZFAR = 2000.0  # Mantener ZFAR para ver objetos lejanos
 
@@ -48,7 +48,7 @@ ZFAR = 2000.0  # Mantener ZFAR para ver objetos lejanos
 EYE_X = 0.0
 EYE_Y = 800.0  # Mantener la altura de la cámara para ver mejor las cajas
 EYE_Z = 800.0
-CENTER_X = 0.0
+CENTER_X = 200.0
 CENTER_Y = 0.0
 CENTER_Z = 0.0
 UP_X = 0.0

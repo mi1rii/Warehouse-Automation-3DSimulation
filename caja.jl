@@ -3,6 +3,11 @@ module ModuloCaja
     using Random
     using JSON  
 
+    const dimBoard = 500
+    const rectangulo_ancho = 400.0  # Ancho aumentado para mejor disposición
+    const rectangulo_profundidad = 200.0
+    const rectangulo_posicion = [dimBoard / 2 + rectangulo_ancho / 2, 0.0, 0.0]
+    
     # Estructura mutable para representar una caja
     mutable struct Caja
         posicion::Vector{Float64}  # Posición [x, y, z] de la caja
@@ -31,14 +36,14 @@ module ModuloCaja
         if cara == :arriba
             # Cara superior
             y = dimBoard - zonaDescarga - margin
-            x = rand() * (2 * (dimBoard - margin)) - (dimBoard - margin)  # Entre -dimBoard + margin y +dimBoard - margin
+            x = rand() * (2 * (dimBoard - margin)) - (dimBoard - margin) + 500 # Entre -dimBoard + margin y +dimBoard - margin
         elseif cara == :izquierda
+            y = -dimBoard + zonaDescarga + margin 
+            x = rand() * (2 * (dimBoard - margin)) - (dimBoard - margin) + 500 # Entre -dimBoard + margin y +dimBoard - margin
             # Cara izquierda
-            x = -dimBoard + margin
-            y = rand() * (dimBoard - zonaDescarga - 2 * margin) - (dimBoard - zonaDescarga - margin)
         elseif cara == :derecha
             # Cara derecha
-            x = dimBoard - margin
+            x = dimBoard - margin + 500
             y = rand() * (dimBoard - zonaDescarga - 2 * margin) - (dimBoard - zonaDescarga - margin)
         else
             error("Cara no válida seleccionada para la creación de la caja.")
