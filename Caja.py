@@ -1,89 +1,34 @@
-# Caja.py
-import numpy as np
-from OpenGL.GL import *
+import random
 
-class Caja:
-    def __init__(self, dimensions, color, position):
-        """
-        Inicializa una caja.
-        :param dimensions: Dimensiones de la caja (ancho, alto, profundidad).
-        :param color: Color de la caja (RGB).
-        :param position: Posición de la caja (X, Y, Z).
-        """
-        self.dimensions = dimensions
-        self.color = color
-        self.position = position
+def initialize_simulation(self, num_packages=15):
+    """Inicializa la simulación con cajas alrededor de la pasarela en tres lados."""
+    dimensions_options = [
+        (10.0, 10.0, 10.0),
+        (50.0, 50.0, 50.0),
+        (70.0, 70.0, 70.0)
+    ]
 
-    def draw(self):
-        """
-        Dibuja la caja utilizando OpenGL, asegurando que ambas caras sean visibles.
-        """
-        width, height, depth = self.dimensions
-        x, y, z = self.position
+    self.packages_state = []
+    margin = 20.0  # Espacio entre las cajas y la pasarela
+    occupied_positions = []  # Lista para mantener posiciones ocupadas y evitar superposición
 
-        # Vértices de la caja
-        vertices = [
-            [x - width / 2, y - height / 2, z - depth / 2],  # Inferior trasero izquierdo
-            [x + width / 2, y - height / 2, z - depth / 2],  # Inferior trasero derecho
-            [x + width / 2, y + height / 2, z - depth / 2],  # Superior trasero derecho
-            [x - width / 2, y + height / 2, z - depth / 2],  # Superior trasero izquierdo
-            [x - width / 2, y - height / 2, z + depth / 2],  # Inferior frontal izquierdo
-            [x + width / 2, y - height / 2, z + depth / 2],  # Inferior frontal derecho
-            [x + width / 2, y + height / 2, z + depth / 2],  # Superior frontal derecho
-            [x - width / 2, y + height / 2, z + depth / 2],  # Superior frontal izquierdo
-        ]
-
-        # Caras de la caja (quads)
-        faces = [
-            [0, 1, 2, 3],  # Cara trasera
-            [4, 5, 6, 7],  # Cara frontal
-            [0, 1, 5, 4],  # Cara inferior
-            [2, 3, 7, 6],  # Cara superior
-            [0, 3, 7, 4],  # Cara izquierda
-            [1, 2, 6, 5],  # Cara derecha
-        ]
-
-        # Normales para cada cara
-        normals = [
-            [0, 0, -1],  # Trasera
-            [0, 0, 1],   # Frontal
-            [0, -1, 0],  # Inferior
-            [0, 1, 0],   # Superior
-            [-1, 0, 0],  # Izquierda
-            [1, 0, 0],   # Derecha
-        ]
-
-        # Deshabilitar face culling para renderizar ambas caras
-        glDisable(GL_CULL_FACE)
-
-        # Dibujar las caras de la caja
-        glColor3f(*self.color)
-        glBegin(GL_QUADS)
-        for i, face in enumerate(faces):
-            glNormal3f(*normals[i])  # Normal para cada cara
-            for vertex in face:
-                glVertex3f(*vertices[vertex])
-        glEnd()
-
-        # Dibujar bordes de la caja en color negro
-        glColor3f(0.0, 0.0, 0.0)
-        glBegin(GL_LINES)
-        edges = [
-            (0, 1), (1, 2), (2, 3), (3, 0),  # Aristas traseras
-            (4, 5), (5, 6), (6, 7), (7, 4),  # Aristas frontales
-            (0, 4), (1, 5), (2, 6), (3, 7)   # Aristas laterales
-        ]
-        for edge in edges:
-            glVertex3f(*vertices[edge[0]])
-            glVertex3f(*vertices[edge[1]])
-        glEnd()
-
-        # Rehabilitar face culling
-        glEnable(GL_CULL_FACE)
-
-    def update_position(self, new_position):
-        """
-        Actualiza la posición de la caja.
-        :param new_position: Nueva posición de la caja (X, Y, Z).
-        """
-        self.position = new_position
+    for i in range(num_packages):
+        dimensiones = random.choice(dimensions_options)
+        max_attempts = 100  # Máximo de intentos para colocar una caja sin superposición
+        for attempt in range(max_attempts):
+            position = self.generate_position_around_pasarela(dimensiones, margin)
+            if not self.check_overlap(position, dimensiones, occupied_positions):
+                occupied_positions.append((position, dimensiones))
+                package = {
+                    "position": position.copy(),
+                    "angle": 0.0,  # Inicialmente sin rotación
+                    "dimensions": dimensiones,
+                    "state": "on_floor",
+                    "start_position": position.copy(),
+                    "end_position": None,
+                    "order": None,  # Se asignará después del empaquetado
+                }
+                self.packages_state.append(package)
+                break
+        else:
+            print(f"Advertencia: No se pudo colocar la caja {i} sin superposición después de {max_attempts} intentos.")
