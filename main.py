@@ -10,7 +10,7 @@ import requests
 import json
 
 from renderer import *
-from caja import *
+from Caja import *
 from robot import Robot
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -308,7 +308,32 @@ class SimulationState:
             index = (index + 1) % len(waypoints)
 
         return path
-    
+
+class Camera:
+    """Clase para manejar el movimiento de la cámara en la simulación."""
+    def __init__(self):
+        self.angle_x = 0.0
+        self.angle_y = 0.0
+        self.distance = 800.0
+
+    def handle_event(self, event):
+        """Maneja los eventos del trackpad para mover la cámara."""
+        if event.type == pygame.MOUSEMOTION:
+            dx, dy = event.rel
+            self.angle_x += dy * 0.1
+            self.angle_y += dx * 0.1
+
+    def apply(self):
+        """Aplica la transformación de la cámara."""
+        glLoadIdentity()
+        gluLookAt(
+            self.distance * math.sin(math.radians(self.angle_y)) * math.cos(math.radians(self.angle_x)),
+            self.distance * math.sin(math.radians(self.angle_x)),
+            self.distance * math.cos(math.radians(self.angle_y)) * math.cos(math.radians(self.angle_x)),
+            CENTER_X, CENTER_Y, CENTER_Z,
+            UP_X, UP_Y, UP_Z
+        )
+
 def Init(simulation):
     """Inicializa la ventana de Pygame y configura OpenGL."""
     screen = pygame.display.set_mode(
@@ -332,8 +357,10 @@ def Init(simulation):
     # Configurar tamaño de los puntos para visibilidad
     glPointSize(2.0)  # Puedes ajustar este valor según tus necesidades
 
+    camera = Camera()  # Instanciar la cámara
     renderer.init_gl()
     simulation.initialize_simulation()
+    return camera  # Retornar la instancia de la cámara
 
 def display(simulation):
     """Renderiza la escena de la simulación."""
@@ -386,7 +413,7 @@ def main():
     pygame.init()  # Inicializar Pygame
     simulation = SimulationState()
     done = False
-    Init(simulation)  # Configurar la simulación
+    camera = Init(simulation)  # Configurar la simulación y obtener la cámara
 
     clock = pygame.time.Clock()  # Control de FPS
 
@@ -402,6 +429,7 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     done = True  # Salir del bucle principal
+                camera.handle_event(event)  # Manejar eventos de la cámara
 
             if not simulation.empaquetado_iniciado and current_time - tiempo_inicio > tiempo_espera:
                 # Realizar el empaquetado
@@ -409,6 +437,7 @@ def main():
                 simulation.empaquetado_iniciado = True
 
             simulation.update()  # Actualizar estado de la simulación
+            camera.apply()  # Aplicar la transformación de la cámara
             display(simulation)  # Renderizar la simulación
             pygame.display.flip()  # Actualizar la pantalla
             clock.tick(60)  # Limitar a 60 FPS
