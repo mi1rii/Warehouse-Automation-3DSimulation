@@ -109,9 +109,6 @@ def draw_walkway():
     glPopMatrix()
 
 
-
-
-
 def dibujar_caja(package_state, color_override=None):
     opmat = OpMat()
     opmat.push()
@@ -165,13 +162,10 @@ def dibujar_caja_body(opmat, color_override=None):
         end = transformed_vertices[edge[1]]
         LineaBresenham3D(start[0], start[1], 0, end[0], end[1], 0)  # Dibujar línea usando Bresenham
 
-
-
-
-
 def draw_container():
     """Dibuja el contenedor."""
     glPushMatrix()
+    glTranslatef(0, contenedor_altura / 2, 0)  # Move the container up by half its height
     glColor3f(0.5, 0.5, 1.0)
     draw_cube(contenedor_ancho, contenedor_altura, contenedor_profundidad)
     glPopMatrix()
@@ -179,7 +173,7 @@ def draw_container():
 def draw_robot(robot):
     """Dibuja un robot."""
     glPushMatrix()
-    glTranslatef(robot.position[0], robot.position[1], robot.position[2])
+    glTranslatef(robot.position[0], robot.position[3], robot.position[2])
     glRotatef(robot.angle * 180.0 / np.pi, 0, 1, 0)
     glColor3f(1.0, 0.0, 0.0)
     draw_cube(20.0, 20.0, 20.0)  # Tamaño del robot
@@ -207,3 +201,5 @@ def render_scene(simulation):
                 dibujar_caja(package, color_override=(1.0, 1.0, 0.0))
         elif package["state"] == "in_container":
             dibujar_caja(package, color_override=(0.0, 1.0, 0.0))
+            
+            
