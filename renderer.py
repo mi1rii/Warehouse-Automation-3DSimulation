@@ -108,59 +108,57 @@ def draw_walkway():
     draw_cube(rectangulo_ancho, 1.0, rectangulo_profundidad)
     glPopMatrix()
 
-
 def dibujar_caja(package_state, color_override=None):
-    opmat = OpMat()
-    opmat.push()
+    glPushMatrix()
     posicion = package_state["position"]
-    angulo = package_state["angle"]
     
     if len(posicion) == 2:
-        x, y = posicion
-        z = 0.0
+        x, z = posicion
+        y = 0.0
     elif len(posicion) == 3:
         x, y, z = posicion
     else:
         raise ValueError("La posición debe tener 2 o 3 elementos.")
     
-    opmat.translate(x, y, z)
-    opmat.rotate(np.degrees(angulo), 0, 0, 1)
-    opmat.scale(0.2, 0.2, 1.0)  # Escalar en X e Y solo
-    dibujar_caja_body(opmat, color_override)
-    opmat.pop()
+    glTranslatef(x, y, z)
+    glRotatef(-45, 0, 1, 0)  # Rotate -90 degrees around the Y-axis
+    glScalef(1.0, 0.2, 0.2)  # Scale in X and Z only
+    dibujar_caja_body(color_override)
+    glPopMatrix()
 
-def dibujar_caja_body(opmat, color_override=None):
-    """Dibuja el contorno de una caja como un rectángulo 2D utilizando Bresenham."""
-    # Definir los vértices de la caja (un rectángulo) con coordenadas homogéneas
+def dibujar_caja_body(color_override=None):
+    """Dibuja el contorno de una caja como un cubo 3D."""
+    # Definir los vértices de la caja (un cubo)
     vertices = [
-        (-10, -10, 0, 1),  # Agregar 1 como coordenada homogénea
-        (10, -10, 0, 1),
-        (10, 10, 0, 1),
-        (-10, 10, 0, 1)
+        [-10, -10, -10],
+        [10, -10, -10],
+        [10, 10, -10],
+        [-10, 10, -10],
+        [-10, -10, 10],
+        [10, -10, 10],
+        [10, 10, 10],
+        [-10, 10, 10]
     ]
-
-    # Transformar las coordenadas usando OpMat
-    transformed_vertices = opmat.mult_Points(vertices) 
 
     # Definir las aristas de la caja
     edges = [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 0)
+        (0, 1), (1, 2), (2, 3), (3, 0),
+        (4, 5), (5, 6), (6, 7), (7, 4),
+        (0, 4), (1, 5), (2, 6), (3, 7)
     ]
 
     # Establecer el color de la caja
     if color_override:
         glColor3f(*color_override)
     else:
-        glColor3f(187/255, 156/255, 110/255)  # Color por defecto de las cajas
+        glColor3f(1.0, 1.0, 0.0)  # Color por defecto de las cajas (amarillo)
 
-    # Dibujar cada arista usando Bresenham
+    # Dibujar cada arista del cubo
+    glBegin(GL_LINES)
     for edge in edges:
-        start = transformed_vertices[edge[0]]
-        end = transformed_vertices[edge[1]]
-        LineaBresenham3D(start[0], start[1], 0, end[0], end[1], 0)  # Dibujar línea usando Bresenham
+        for vertex in edge:
+            glVertex3f(*vertices[vertex])
+    glEnd()
 
 def draw_container():
     """Dibuja el contenedor."""
