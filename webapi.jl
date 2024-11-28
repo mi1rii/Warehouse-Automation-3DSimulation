@@ -1,157 +1,80 @@
-# webapi
-
-include("caja.jl")
 include("robot.jl")
 
-using .ModuloRobot  
-using .ModuloCaja   
+using .ModuloRobot
 using Genie, Genie.Renderer.Json, Genie.Requests
 using UUIDs
-using Dates  # Para funciones de tiempo
-using LinearAlgebra  # Para cálculos de distancia
 
-# Parámetros de la simulación
-dim_board = 120.0
-zona_descarga = 10.0
-margin = 10.0
+const robots = Dict()
+const boxes_initialized = Ref(false)  # Verificar si las cajas han sido inicializadas
+const packed_boxes = Ref([])  # Almacenar datos de cajas empaquetadas
+const robots_initialized = Ref(false)  #variableerificar si los robots han sido inicializados
 
-# Distancia mínima entre cajas 
-const MIN_DISTANCE = 5.0 
-
-# Gestión del estado global
-instances = Dict()
-paquetes = Dict()
-simulation_metadata = Dict()  
-
-# Función para verificar la distancia mínima entre una nueva caja y las existentes
-function is_far_enough(new_pos::Vector{Float64}, existing_boxes::Vector{ModuloCaja.Caja})
-    for box in existing_boxes
-        distance = norm(new_pos[1:2] - box.posicion[1:2])  # Calcula la distancia 
-        if distance < MIN_DISTANCE
-            return false
-        end
-    end
-    return true
-end
-
-# Ruta para inicializar la simulación
+# Inicializar simulación
 route("/simulation", method = POST) do
-    num_robots = try parse(Int, jsonpayload()["num_robots"]) catch e 3 end
-    num_packages = try parse(Int, jsonpayload()["num_packages"]) catch e 15 end
+    id = ""  # Inicializar variable id
 
-    # Crear ID de simulación
-    id = string(uuid1())
-
-    # Crear robots
-    robots = [ModuloRobot.crearRobot(dim_board, zona_descarga, 5.0, i + 1, num_robots, margin)
-              for i in 1:num_robots]
-
-    # Crear cajas asegurando que no se superpongan
-    boxes = ModuloCaja.Caja[]  # Inicializar un arreglo vacío de cajas
-
-    for _ in 1:num_packages
-        max_attempts = 100  # Número máximo de intentos para colocar una caja sin superposiciones
-        attempt = 0
-        success = false
-        new_box = nothing  # Inicializar `new_box` antes del bucle
-    
-        while attempt < max_attempts && !success
-            new_box = ModuloCaja.crearCaja(dim_board, zona_descarga, margin)
-            if is_far_enough(new_box.posicion, boxes)
-                push!(boxes, new_box)
-                success = true
-            else
-                attempt += 1
-            end
-        end
-    
-        if !success && new_box != nothing
-            println("Warning: No se pudo colocar una caja sin superposición después de $max_attempts intentos.")
-            push!(boxes, new_box)
-        end
+    # Verificar si las cajas han sido inicializadas
+    if !boxes_initialized[]
+        packed_boxes[] = ModuloRobot.boxes()  # Llamar a boxes() solo una vez
+        boxes_initialized[] = true  # Establecer la bandera a true
     end
-    
 
-    # Almacenar en instancias
-    instances[id] = robots
-    paquetes[id] = boxes
+    # Verificar si los robots han sido inicializados
+    if !robots_initialized[]
+        num_robots = try parse(Int, jsonpayload()["num_robots"]) catch e 5 end
+        id = string(UUIDs.uuid1())  # Usar UUIDs.uuid1()
+        robots[id] = [ModuloRobot.crearRobot(120.0, 1.0) for _ in 1:num_robots]
+        robots_initialized[] = true  # Establecer la bandera a true
+    else
+        # Si los robots ya están inicializados, obtener el id existente
+        id = collect(keys(robots))[1]  # Convertir KeySet a un array y obtener el primer id de robot
+    end
 
-    # Almacenar metadatos de simulación
-    simulation_metadata[id] = Dict(
-        "start_time" => time(),  # Registrar tiempo de inicio
-        "end_time" => nothing,
-        "completed" => false
-    )
-
-    # Devolver ID de simulación y estado inicial
-    json(Dict(
+    return json(Dict(
         "id" => id,
-        "robots" => [ModuloRobot.to_dict(robot) for robot in robots],
-        "packages" => [ModuloCaja.to_dict(box) for box in boxes]
+        "robots" => [ModuloRobot.to_dict(robot) for robot in robots[id]],
+        "packed_boxes" => packed_boxes[]  # Incluir datos de cajas empaquetadas en la respuesta
     ))
 end
 
-# Ruta para actualizar la simulación
+# Actualizar simulación
 route("/simulation/:id", method = POST) do
     id = payload(:id)
-    if !haskey(instances, id)
-        return json(Dict("error" => "Simulation not found")), 404
+    println("Solicitud recibida para actualizar simulación con id: ", id)
+
+    if !haskey(robots, id)
+        status(404)
+        return json(Dict("error" => "Simulación no encontrada"))
     end
 
-    robots = instances[id]
-    boxes = paquetes[id]
+    velocidad = try parse(Float64, jsonpayload()["velocidad"]) catch e 1.0 end
+    tiempo = try parse(Float64, jsonpayload()["tiempo"]) catch e 1.0 end
 
-    # Actualizar cada robot
-    for robot in robots
-        ModuloRobot.update(robot, boxes)
+    for robot in robots[id]
+        ModuloRobot.mover_robot!(robot, velocidad * tiempo, robot.angulo)
+        # Esperar respuesta del front-end aquí (pseudo-código)
+        # wait_for_frontend_response()
     end
 
-    # Verificar si todas las cajas están en estado "soltada"
-    all_soltadas = all(box -> ModuloCaja.get_estado_caja(box) == "soltada", boxes)
-
-    # Si todas las cajas están soltadas y la simulación no ha sido marcada como completada
-    if all_soltadas && !simulation_metadata[id]["completed"]
-        simulation_metadata[id]["end_time"] = time()
-        simulation_metadata[id]["completed"] = true
-
-        # Calcular la duración de la simulación
-        duration = simulation_metadata[id]["end_time"] - simulation_metadata[id]["start_time"]
-
-        # Recopilar los contadores de movimientos de los robots
-        movement_counts = [robot.movement_count for robot in robots]
-        average_movements = mean(movement_counts)
-        std_dev_movements = std(movement_counts)
-
-        # Imprimir las estadísticas en la consola
-        println("Simulación completada.")
-        println("Tiempo necesario hasta que todas las cajas están en pilas de máximo 5 cajas: ", duration, " segundos.")
-        println("Número de movimientos realizados por los robots:")
-        println("Promedio: ", average_movements)
-        println("Desviación estándar: ", std_dev_movements)
-    end
-
-    # Devolver estado actualizado
-    json(Dict(
-        "robots" => [ModuloRobot.to_dict(robot) for robot in robots],
-        "packages" => [ModuloCaja.to_dict(box) for box in boxes]
-    ))
+    # Actualizar y devolver el nuevo estado
+    updated_robots = [ModuloRobot.to_dict(robot) for robot in robots[id]]
+    return json(Dict("robots" => updated_robots))
 end
 
-# Ruta para limpiar la simulación
+# Eliminar simulación
 route("/simulation/:id", method = DELETE) do
     id = payload(:id)
-    delete!(instances, id)
-    delete!(paquetes, id)
-    delete!(simulation_metadata, id)  # Eliminar metadatos de simulación
-    json(Dict("status" => "deleted"))
+    if haskey(robots, id)
+        delete!(robots, id)
+        return json(Dict("status" => "eliminado"))
+    else
+        return json(Dict("error" => "Simulación no encontrada")), 404
+    end
 end
 
-# Configurar CORS
+# Iniciar servidor Genie
 Genie.config.run_as_server = true
-Genie.config.cors_headers["Access-Control-Allow-Origin"] = "*"
-Genie.config.cors_headers["Access-Control-Allow-Headers"] = "Content-Type"
-Genie.config.cors_headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
-Genie.config.cors_allowed_origins = ["*"]
+up(8000)  
 
-# Iniciar servidor
-up(8000)
+# Mantener el servidor en ejecución indefinidamente
+wait()

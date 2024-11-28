@@ -4,14 +4,9 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import numpy as np
 from opmat import OpMat
-from robot import *
-from caja import *
-from main import *
-from linea_bresenham import *
-import math
 
 # Importar constantes necesarias
-from main import (
+from main_viejo import (
     screen_width, screen_height, FOVY, ZNEAR, ZFAR,
     EYE_X, EYE_Y, EYE_Z, CENTER_X, CENTER_Y, CENTER_Z, UP_X, UP_Y, UP_Z,
     X_MIN, X_MAX, Y_MIN, Y_MAX, Z_MIN, Z_MAX,
@@ -19,11 +14,6 @@ from main import (
     contenedor_ancho, contenedor_altura, contenedor_profundidad,
     rectangulo_ancho, rectangulo_profundidad, rectangulo_posicion
 )
-
-# Variables for camera rotation
-camera_angle_h = 0.0  # Horizontal angle
-camera_angle_v = 0.0  # Vertical angle
-mouse_sensitivity = 0.1  # Sensitivity of mouse movement
 
 def init_gl():
     """Inicializa la ventana de Pygame y configura OpenGL."""
@@ -38,7 +28,7 @@ def init_gl():
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
     gluLookAt(EYE_X, EYE_Y, EYE_Z, CENTER_X, CENTER_Y, CENTER_Z, UP_X, UP_Y, UP_Z)
-    glClearColor(0, 0, 0, 0)
+    #glClearColor(0, 0, 0, 0)
     glEnable(GL_DEPTH_TEST)
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
 
@@ -60,15 +50,32 @@ def draw_axis():
     glEnd()
 
 def draw_floor():
-    """Dibuja el plano base."""
-    glColor3f(0.5, 0.5, 0.5)
-    glBegin(GL_LINES)
-    for i in range(-int(dimBoard/2), int(dimBoard/2), 50):
-        glVertex3f(i + area_offset_x, 0.0, -dimBoard/2 + area_offset_z)
-        glVertex3f(i + area_offset_x, 0.0, dimBoard/2 + area_offset_z)
-        glVertex3f(-dimBoard/2 + area_offset_x, 0.0, i + area_offset_z)
-        glVertex3f(dimBoard/2 + area_offset_x, 0.0, i + area_offset_z)
+    """Dibuja el plano base con una textura."""
+    glEnable(GL_TEXTURE_2D)
+    texture = pygame.image.load("piso.jpg")
+    texture_data = pygame.image.tostring(texture, "RGB", 1)
+    width, height = texture.get_size()
+
+    glGenTextures(1)
+    glBindTexture(GL_TEXTURE_2D, 1)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture_data)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+
+    glColor3f(1.0, 1.0, 1.0)
+    glBegin(GL_QUADS)
+    glTexCoord2f(0.0, 0.0)
+    glVertex3f(-contenedor_ancho/2, 0.0, -contenedor_profundidad/2)
+    glTexCoord2f(1.0, 0.0)
+    glVertex3f(contenedor_ancho/2, 0.0, -contenedor_profundidad/2)
+    glTexCoord2f(1.0, 1.0)
+    glVertex3f(contenedor_ancho/2, 0.0, contenedor_profundidad/2)
+    glTexCoord2f(0.0, 1.0)
+    glVertex3f(-contenedor_ancho/2, 0.0, contenedor_profundidad/2)
     glEnd()
+    glDisable(GL_TEXTURE_2D)
 
 def draw_cube(width, height, depth, color=(1.0, 1.0, 1.0)):
     """Dibuja un cubo con las dimensiones especificadas."""
@@ -97,14 +104,32 @@ def draw_cube(width, height, depth, color=(1.0, 1.0, 1.0)):
     glEnd()
 
 def draw_base_plane():
-    """Dibuja el plano base debajo del contenedor."""
-    glColor3f(0.5, 0.5, 0.5)
+    """Dibuja el plano base debajo del contenedor con una textura."""
+    glEnable(GL_TEXTURE_2D)
+    texture = pygame.image.load("piso.jpg")
+    texture_data = pygame.image.tostring(texture, "RGB", 1)
+    width, height = texture.get_size()
+
+    glGenTextures(1)
+    glBindTexture(GL_TEXTURE_2D, 1)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture_data)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+
+    glColor3f(1.0, 1.0, 1.0)
     glBegin(GL_QUADS)
+    glTexCoord2f(0.0, 0.0)
     glVertex3f(-contenedor_ancho/2, 0, -contenedor_profundidad/2)
+    glTexCoord2f(1.0, 0.0)
     glVertex3f(contenedor_ancho/2, 0, -contenedor_profundidad/2)
+    glTexCoord2f(1.0, 1.0)
     glVertex3f(contenedor_ancho/2, 0, contenedor_profundidad/2)
+    glTexCoord2f(0.0, 1.0)
     glVertex3f(-contenedor_ancho/2, 0, contenedor_profundidad/2)
     glEnd()
+    glDisable(GL_TEXTURE_2D)
 
 def draw_walkway():
     """Dibuja la pasarela."""
@@ -114,66 +139,66 @@ def draw_walkway():
     draw_cube(rectangulo_ancho, 1.0, rectangulo_profundidad)
     glPopMatrix()
 
-
-
-
-
-def dibujar_caja(package_state, color_override=None):
-    opmat = OpMat()
-    opmat.push()
-    posicion = package_state["position"]
-    angulo = package_state["angle"]
+def draw_box(package_state, color_override=None):
+    """Dibuja una caja con textura en cada cara."""
+    glPushMatrix()
+    pos = package_state["position"]
+    dim = package_state["dimensions"]
+    glTranslatef(pos[0], pos[1], pos[2])
+    glRotatef(package_state["angle"] * 180.0 / np.pi, 0, 1, 0)
     
-    if len(posicion) == 2:
-        x, y = posicion
-        z = 0.0
-    elif len(posicion) == 3:
-        x, y, z = posicion
-    else:
-        raise ValueError("La posición debe tener 2 o 3 elementos.")
-    
-    opmat.translate(x, y, z)
-    opmat.rotate(np.degrees(angulo), 0, 0, 1)
-    opmat.scale(0.2, 0.2, 1.0)  # Escalar en X e Y solo
-    dibujar_caja_body(opmat, color_override)
-    opmat.pop()
-
-def dibujar_caja_body(opmat, color_override=None):
-    """Dibuja el contorno de una caja como un rectángulo 2D utilizando Bresenham."""
-    # Definir los vértices de la caja (un rectángulo) con coordenadas homogéneas
-    vertices = [
-        (-10, -10, 0, 1),  # Agregar 1 como coordenada homogénea
-        (10, -10, 0, 1),
-        (10, 10, 0, 1),
-        (-10, 10, 0, 1)
-    ]
-
-    # Transformar las coordenadas usando OpMat
-    transformed_vertices = opmat.mult_Points(vertices) 
-
-    # Definir las aristas de la caja
-    edges = [
-        (0, 1),
-        (1, 2),
-        (2, 3),
-        (3, 0)
-    ]
-
-    # Establecer el color de la caja
     if color_override:
-        glColor3f(*color_override)
+        color = color_override
     else:
-        glColor3f(187/255, 156/255, 110/255)  # Color por defecto de las cajas
+        color = (1.0, 1.0, 1.0)
+    
+    glColor3f(*color)
+    glEnable(GL_TEXTURE_2D)
+    texture = pygame.image.load("box_texture.jpg")
+    texture_data = pygame.image.tostring(texture, "RGB", 1)
+    width, height = texture.get_size()
 
-    # Dibujar cada arista usando Bresenham
-    for edge in edges:
-        start = transformed_vertices[edge[0]]
-        end = transformed_vertices[edge[1]]
-        LineaBresenham3D(start[0], start[1], 0, end[0], end[1], 0)  # Dibujar línea usando Bresenham
+    glGenTextures(1)
+    glBindTexture(GL_TEXTURE_2D, 1)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture_data)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 
+    vertices = [
+        [-dim[0]/2, -dim[1]/2, -dim[2]/2],
+        [dim[0]/2, -dim[1]/2, -dim[2]/2],
+        [dim[0]/2, dim[1]/2, -dim[2]/2],
+        [-dim[0]/2, dim[1]/2, -dim[2]/2],
+        [-dim[0]/2, -dim[1]/2, dim[2]/2],
+        [dim[0]/2, -dim[1]/2, dim[2]/2],
+        [dim[0]/2, dim[1]/2, dim[2]/2],
+        [-dim[0]/2, dim[1]/2, dim[2]/2]
+    ]
 
+    faces = [
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (2, 3, 7, 6),
+        (0, 3, 7, 4),
+        (1, 2, 6, 5)
+    ]
 
+    tex_coords = [
+        (0, 0), (1, 0), (1, 1), (0, 1)
+    ]
 
+    glBegin(GL_QUADS)
+    for face in faces:
+        for i, vertex in enumerate(face):
+            glTexCoord2f(*tex_coords[i])
+            glVertex3f(*vertices[vertex])
+    glEnd()
+    
+    glDisable(GL_TEXTURE_2D)
+    glPopMatrix()
 
 def draw_container():
     """Dibuja el contenedor."""
@@ -204,43 +229,16 @@ def render_scene(simulation):
     # Dibujar cajas
     for package in simulation.packages_state:
         if package["state"] == "on_floor":
-            dibujar_caja(package, color_override=(0.73, 0.61, 0.43))
+            draw_box(package, color_override=(0.73, 0.61, 0.43))
         elif package["state"] == "carried_by_robot":
             assigned_robot = next((r for r in simulation.robots if r.id == package.get("assigned_robot_id")), None)
             if assigned_robot:
                 package["position"] = [assigned_robot.position[0], 0.0, assigned_robot.position[2]]
                 package["angle"] = assigned_robot.angle
-                dibujar_caja(package, color_override=(1.0, 1.0, 0.0))
+                draw_box(package, color_override=(1.0, 1.0, 0.0))
         elif package["state"] == "in_container":
-            dibujar_caja(package, color_override=(0.0, 1.0, 0.0))
+            draw_box(package, color_override=(0.0, 1.0, 0.0))
 
-def handle_mouse_motion():
-    global camera_angle_h, camera_angle_v
-    mouse_x, mouse_y = pygame.mouse.get_pos()  # Get current mouse position
-    center_x, center_y = screen_width // 2, screen_height // 2  # Center of the screen
-
-    # Calculate the difference from the center
-    dx = mouse_x - center_x
-    dy = mouse_y - center_y
-
-    # Update camera angles based on mouse movement
-    camera_angle_h += dx * mouse_sensitivity
-    camera_angle_v -= dy * mouse_sensitivity  # Invert vertical movement
-    camera_angle_v = max(-89.0, min(89.0, camera_angle_v))  # Limit vertical angle
-
-    # Move the mouse back to the center of the screen
-    pygame.mouse.set_pos(center_x, center_y)
-
-def display(simulation):
-    """Renderiza la escena de la simulación."""
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)  # Limpiar buffers
-
-    # Update camera position based on angles
-    eye_x = EYE_X + math.cos(math.radians(camera_angle_h)) * math.cos(math.radians(camera_angle_v)) * EYE_Z
-    eye_y = EYE_Y + math.sin(math.radians(camera_angle_v)) * EYE_Z
-    eye_z = EYE_Z + math.sin(math.radians(camera_angle_h)) * math.cos(math.radians(camera_angle_v)) * EYE_Z
-
-    gluLookAt(eye_x, eye_y, eye_z, CENTER_X, CENTER_Y, CENTER_Z, UP_X, UP_Y, UP_Z)
-
-    renderer.render_scene(simulation)
-    simulation.update()  # Actualizar estado de la simulación
+    # Dibujar robots
+    for robot in simulation.robots:
+        draw_robot(robot) 
