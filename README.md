@@ -3,6 +3,9 @@ Warehouse Automation 3D Simulation
 This project is a 3D simulation of an automated warehouse system where forklift robots load packages into a truck efficiently. We used Python with OpenGL for the visual simulation and Julia to define the behavior of the agents (robots and boxes).
 
 👥 Authors
+
+Miranda Eugenia Colorado Arróniz
+
 Sofía Zugasti Delgado
 
 Estefanía Antonio Villaseca
