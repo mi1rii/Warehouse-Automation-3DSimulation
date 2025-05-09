@@ -13,6 +13,7 @@ Estefanía Antonio Villaseca
 Alejandro Kong Montoya
 
 🧠 Project Description
+
 This simulation models a logistics automation scenario in which:
 
 Forklift robots navigate through a warehouse.
@@ -24,6 +25,7 @@ Boxes are loaded into a truck using the 3DBinPacking library to optimize space.
 The behavior of the agents is programmed in Julia, while the 3D visualization and simulation control are developed in Python with OpenGL.
 
 🔧 Technologies Used
+
 Python 3
 
 OpenGL (PyOpenGL)
